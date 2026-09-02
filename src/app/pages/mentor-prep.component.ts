@@ -214,30 +214,42 @@ export class MentorPrepComponent {
     }
   });
 
+  /** De al opgeslagen voorbereiding voor de gekozen leerling en periode, of null. */
+  bestaandeVoorbereiding = computed(() => {
+    const v = this.formValues();
+    if (!v.leerlingnummer || !v.periode) return null;
+    return this.dataService.mentorVoorbereiding().find(item =>
+      item.leerlingnummer === v.leerlingnummer &&
+      item.periode === v.periode &&
+      item.schooljaar === (v.schooljaar || '2026-2027')
+    ) ?? null;
+  });
+
+  /** Waarvoor het formulier het laatst is gevuld, zodat typen niet overschreven wordt. */
+  private laatstGeladen: string | null = null;
+
   constructor() {
+    // Laadt een eerder opgeslagen voorbereiding in zodra de mentor een leerling of
+    // periode kiest. Leest bewust uit formValues() en niet uit form.value: dat laatste
+    // is geen signal, waardoor dit effect nooit opnieuw zou draaien.
     effect(() => {
-      const l = this.form.value.leerlingnummer;
-      const p = this.form.value.periode;
-      if (l && p) {
-        const existing = this.dataService.mentorVoorbereiding().find(v => v.leerlingnummer === l && v.periode === p && v.schooljaar === '2026-2027');
-        if (existing) {
-          this.form.patchValue({
-            overzichtResultaten: existing.overzichtResultaten || '',
-            belangrijksteSignalenUitMemos: existing.belangrijksteSignalenUitMemos || '',
-            aandachtspuntenPersoonlijkeAchtergrond: existing.aandachtspuntenPersoonlijkeAchtergrond || '',
-            centraleBespreekvragen: existing.centraleBespreekvragen || '',
-            status: existing.status || 'Concept'
-          }, { emitEvent: false });
-        } else {
-          this.form.patchValue({
-            overzichtResultaten: '',
-            belangrijksteSignalenUitMemos: '',
-            aandachtspuntenPersoonlijkeAchtergrond: '',
-            centraleBespreekvragen: '',
-            status: 'Concept'
-          }, { emitEvent: false });
-        }
-      }
+      const v = this.formValues();
+      const existing = this.bestaandeVoorbereiding();
+      if (!v.leerlingnummer || !v.periode) return;
+
+      // Alleen (her)vullen als de selectie wijzigt of het record voor het eerst binnenkomt.
+      // Zonder deze controle zou elke toetsaanslag het formulier terugzetten.
+      const sleutel = `${v.leerlingnummer}|${v.periode}|${existing?.id ?? 'nieuw'}`;
+      if (sleutel === this.laatstGeladen) return;
+      this.laatstGeladen = sleutel;
+
+      this.form.patchValue({
+        overzichtResultaten: existing?.overzichtResultaten || '',
+        belangrijksteSignalenUitMemos: existing?.belangrijksteSignalenUitMemos || '',
+        aandachtspuntenPersoonlijkeAchtergrond: existing?.aandachtspuntenPersoonlijkeAchtergrond || '',
+        centraleBespreekvragen: existing?.centraleBespreekvragen || '',
+        status: existing?.status || 'Concept'
+      }, { emitEvent: false });
     });
 
     this.form.get('leerlingnummer')?.valueChanges.subscribe(() => this.form.updateValueAndValidity());

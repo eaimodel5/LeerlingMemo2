@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AccessCode, UserRole } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
+import { parseCsv, downloadCsv, headersMatch } from '../utils/csv';
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import firebaseConfig from '../../../firebase-applet-config.json';
@@ -239,12 +240,12 @@ export class SuperuserComponent {
   newCodeVak = '';
 
   downloadTemplate() {
-    const csvContent = 'Email;Naam;Rol;Vak\nj.devries@school.nl;Jan de Vries;Docent;Wiskunde\nm.pietersen@school.nl;Marieke Pietersen;Mentor;\np.jansen@school.nl;Peter Jansen;Coordinator;';
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'Template_AccessCodes.csv';
-    link.click();
+    downloadCsv('Template_AccessCodes.csv', [
+      ['Email', 'Naam', 'Rol', 'Vak'],
+      ['j.devries@school.nl', 'Jan de Vries', 'Docent', 'Wiskunde'],
+      ['m.pietersen@school.nl', 'Marieke Pietersen', 'Mentor', ''],
+      ['p.jansen@school.nl', 'Peter Jansen', 'Coordinator', '']
+    ]);
   }
 
   onFileSelected(event: any) {
@@ -254,26 +255,22 @@ export class SuperuserComponent {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
-      const lines = text.split('\n').filter(l => l.trim().length > 0);
-      if (lines.length < 1) return;
+      const rows = parseCsv(text);
+      if (rows.length < 1) return;
 
-      const delimiter = lines[0].includes(';') ? ';' : ',';
-      const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
-      
       const expectedHeaders = ['Email', 'Naam', 'Rol', 'Vak'];
-      
-      const headersMatch = expectedHeaders.every((eh, i) => headers[i] === eh);
-      if (!headersMatch) {
+
+      if (!headersMatch(rows[0], expectedHeaders)) {
         alert('Fout: De kolomnamen komen niet overeen met het sjabloon (verwacht: Email, Naam, Rol, Vak). Pas de titels niet aan.');
         event.target.value = '';
         return;
       }
 
       const rowsToImport = [];
-      for (let i = 1; i < lines.length; i++) {
-        const columns = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''));
+      for (let i = 1; i < rows.length; i++) {
+        const columns = rows[i];
         if (columns.length < 3) continue;
-        
+
         const email = columns[0];
         const naam = columns[1];
         const rol = columns[2] as UserRole;

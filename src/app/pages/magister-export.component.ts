@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DataService } from '../services/data.service';
 import { MatIconModule } from '@angular/material/icon';
+import { downloadCsv } from '../utils/csv';
 
 @Component({
   selector: 'app-magister-export',
@@ -150,7 +151,7 @@ export class MagisterExportComponent {
     const isTW3 = this.periode() === 'TW3';
 
     if (this.typeExport() === 'memos' || this.typeExport() === 'full') {
-      text += 'Leerling: ' + ll.leerling + '\\nKlas: ' + ll.klas + '\\nPeriode: ' + this.periode() + '\\n\\nMemo’s vakdocenten\\n=================\\n';
+      text += 'Leerling: ' + ll.leerling + '\nKlas: ' + ll.klas + '\nPeriode: ' + this.periode() + '\n\nMemo’s vakdocenten\n=================\n';
       
       let memos: any[] = [];
       if (isTW3) {
@@ -159,7 +160,7 @@ export class MagisterExportComponent {
         memos = this.dataService.memoTW1TW2().filter(m => m.leerlingnummer === this.leerlingnummer() && m.toetsweek === this.periode() && m.schooljaar === this.schooljaar());
       }
 
-      if (memos.length === 0) text += "Geen memo's gevonden voor deze periode.\\n";
+      if (memos.length === 0) text += "Geen memo's gevonden voor deze periode.\n";
 
       memos.forEach(m => {
         const aandachtspunten = [];
@@ -170,54 +171,54 @@ export class MagisterExportComponent {
         if(m.aandachtWerkNietOpOrde) aandachtspunten.push('Werk niet op orde');
         if(m.aandachtAanwezigheidVerzuim) aandachtspunten.push('Aanwezigheid / verzuim');
 
-        text += '\\n[' + m.vak + '] - ' + m.docentNaam + '\\n';
-        text += 'Aandachtspunt(en): ' + (aandachtspunten.join(', ') || 'Geen') + '\\n';
-        text += 'Waar zie je dit concreet aan:\\n' + m.waarZieJeDitAan + '\\n';
+        text += '\n[' + m.vak + '] - ' + m.docentNaam + '\n';
+        text += 'Aandachtspunt(en): ' + (aandachtspunten.join(', ') || 'Geen') + '\n';
+        text += 'Waar zie je dit concreet aan:\n' + m.waarZieJeDitAan + '\n';
         
         if (m.watWerktWel) {
-          text += 'Wat werkt wél:\\n' + m.watWerktWel + '\\n';
+          text += 'Wat werkt wél:\n' + m.watWerktWel + '\n';
         }
 
         if (isTW3) {
-          text += 'Doorstroomtoelichting:\\n' + m.doorstroomToelichting + '\\n';
+          text += 'Doorstroomtoelichting:\n' + m.doorstroomToelichting + '\n';
         } else {
-          text += 'Actie leerling:\\n' + m.leerlingActie + '\\n';
-          text += 'EMC: ' + (m.emc || 'Nee') + '\\n';
-          text += 'Actie docent:\\n' + m.docentActie + '\\n';
+          text += 'Actie leerling:\n' + m.leerlingActie + '\n';
+          text += 'EMC: ' + (m.emc || 'Nee') + '\n';
+          text += 'Actie docent:\n' + m.docentActie + '\n';
         }
       });
-      text += '\\n';
+      text += '\n';
     }
 
     if (this.typeExport() === 'prep' || this.typeExport() === 'full') {
       const prep = this.dataService.mentorVoorbereiding().find(p => p.leerlingnummer === this.leerlingnummer() && p.periode === this.periode() && p.schooljaar === this.schooljaar());
-      if (this.typeExport() === 'full') text += '\\n--- VOORBEREIDING RAPPORTVERGADERING ---\\n\\n';
-      else text += 'Leerling: ' + ll.leerling + '\\nKlas: ' + ll.klas + '\\nPeriode: ' + this.periode() + '\\n\\n';
+      if (this.typeExport() === 'full') text += '\n--- VOORBEREIDING RAPPORTVERGADERING ---\n\n';
+      else text += 'Leerling: ' + ll.leerling + '\nKlas: ' + ll.klas + '\nPeriode: ' + this.periode() + '\n\n';
 
       if (prep) {
-        text += 'Overzicht resultaten:\\n' + (prep.overzichtResultaten || '-') + '\\n\\n';
-        text += 'Belangrijkste signalen uit memo’s:\\n' + (prep.belangrijksteSignalenUitMemos || '-') + '\\n\\n';
-        text += 'Aandachtspunten persoonlijke achtergrond:\\n' + (prep.aandachtspuntenPersoonlijkeAchtergrond || '-') + '\\n\\n';
-        text += 'Centrale bespreekvraag of -vragen:\\n' + (prep.centraleBespreekvragen || '-') + '\\n';
+        text += 'Overzicht resultaten:\n' + (prep.overzichtResultaten || '-') + '\n\n';
+        text += 'Belangrijkste signalen uit memo’s:\n' + (prep.belangrijksteSignalenUitMemos || '-') + '\n\n';
+        text += 'Aandachtspunten persoonlijke achtergrond:\n' + (prep.aandachtspuntenPersoonlijkeAchtergrond || '-') + '\n\n';
+        text += 'Centrale bespreekvraag of -vragen:\n' + (prep.centraleBespreekvragen || '-') + '\n';
       } else {
-        text += "Geen voorbereiding gevonden.\\n";
+        text += "Geen voorbereiding gevonden.\n";
       }
-      text += '\\n';
+      text += '\n';
     }
 
     if (this.typeExport() === 'plan' || this.typeExport() === 'full') {
       const plan = this.dataService.voortgangsplan().find(p => p.leerlingnummer === this.leerlingnummer() && p.periode === this.periode() && p.schooljaar === this.schooljaar());
-      if (this.typeExport() === 'full') text += '\\n--- VOORTGANGSPLAN ---\\n\\n';
-      else text += 'Leerling: ' + ll.leerling + '\\nKlas: ' + ll.klas + '\\nPeriode: ' + this.periode() + '\\n\\n';
+      if (this.typeExport() === 'full') text += '\n--- VOORTGANGSPLAN ---\n\n';
+      else text += 'Leerling: ' + ll.leerling + '\nKlas: ' + ll.klas + '\nPeriode: ' + this.periode() + '\n\n';
 
       if (plan) {
-        text += 'Gezamenlijke conclusie:\\n' + (plan.gezamenlijkeConclusie || '-') + '\\n\\n';
-        text += 'Afspraken voor de leerling:\\n1. ' + (plan.afspraakLeerling1||'-') + '\\n2. ' + (plan.afspraakLeerling2||'-') + '\\n3. ' + (plan.afspraakLeerling3||'-') + '\\n\\n';
-        text += 'Afspraken voor docenten:\\n1. ' + (plan.afspraakDocenten1||'-') + '\\n2. ' + (plan.afspraakDocenten2||'-') + '\\n3. ' + (plan.afspraakDocenten3||'-') + '\\n\\n';
-        text += 'Evaluatie/controlemoment:\\nWanneer: ' + (plan.evaluatieWanneer||'-') + '\\nDoor wie: ' + (plan.evaluatieDoorWie||'-') + '\\n\\n';
-        text += 'Terugkoppeling aan ouders:\\n' + (plan.terugkoppelingOuders || '-') + '\\n';
+        text += 'Gezamenlijke conclusie:\n' + (plan.gezamenlijkeConclusie || '-') + '\n\n';
+        text += 'Afspraken voor de leerling:\n1. ' + (plan.afspraakLeerling1||'-') + '\n2. ' + (plan.afspraakLeerling2||'-') + '\n3. ' + (plan.afspraakLeerling3||'-') + '\n\n';
+        text += 'Afspraken voor docenten:\n1. ' + (plan.afspraakDocenten1||'-') + '\n2. ' + (plan.afspraakDocenten2||'-') + '\n3. ' + (plan.afspraakDocenten3||'-') + '\n\n';
+        text += 'Evaluatie/controlemoment:\nWanneer: ' + (plan.evaluatieWanneer||'-') + '\nDoor wie: ' + (plan.evaluatieDoorWie||'-') + '\n\n';
+        text += 'Terugkoppeling aan ouders:\n' + (plan.terugkoppelingOuders || '-') + '\n';
       } else {
-        text += "Geen voortgangsplan gevonden.\\n";
+        text += "Geen voortgangsplan gevonden.\n";
       }
     }
 
@@ -242,28 +243,20 @@ export class MagisterExportComponent {
     }
 
     const headers = ['Leerlingnummer', 'Naam', 'Klas', 'Vak', 'Aandachtspunten', 'Waar zie je dit aan?', 'Wat werkt wel?', 'Actie Leerling (TW1/TW2) / Doorstroom (TW3)', 'Actie Docent'];
-    let csvContent = headers.join(';') + '\\n';
 
-    leerlingen.forEach(l => {
-      const row = [
-        l.leerlingnummer,
-        `"${l.leerling}"`,
-        l.klas,
-        '', // Vak
-        '', // Aandachtspunten
-        '', // Waar zie je dit aan
-        '', // Wat werkt wel
-        '', // Actie leerling
-        ''  // Actie docent
-      ];
-      csvContent += row.join(';') + '\\n';
-    });
+    const rows = [headers, ...leerlingen.map(l => [
+      l.leerlingnummer,
+      l.leerling,
+      l.klas,
+      '', // Vak
+      '', // Aandachtspunten
+      '', // Waar zie je dit aan
+      '', // Wat werkt wel
+      '', // Actie leerling
+      ''  // Actie docent
+    ])];
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Blanco_Invullijst_${this.klas()}_${this.periode()}.csv`;
-    link.click();
+    downloadCsv(`Blanco_Invullijst_${this.klas()}_${this.periode()}.csv`, rows);
   }
 
   exportClassToCSV() {
@@ -274,8 +267,8 @@ export class MagisterExportComponent {
     }
 
     const headers = ['Leerlingnummer', 'Naam', 'Klas', 'Mentor', 'Periode', 'Ingevulde Memos', 'Voorbereiding Mentor', 'Voortgangsplan'];
-    let csvContent = headers.join(';') + '\\n';
-    
+    const rows: string[][] = [headers];
+
     const isTW3 = this.periode() === 'TW3';
 
     leerlingen.forEach(l => {
@@ -289,23 +282,18 @@ export class MagisterExportComponent {
       const prep = this.dataService.mentorVoorbereiding().find(p => p.leerlingnummer === l.leerlingnummer && p.periode === this.periode() && p.schooljaar === this.schooljaar());
       const plan = this.dataService.voortgangsplan().find(p => p.leerlingnummer === l.leerlingnummer && p.periode === this.periode() && p.schooljaar === this.schooljaar());
 
-      const row = [
+      rows.push([
         l.leerlingnummer,
-        `"${l.leerling}"`,
+        l.leerling,
         l.klas,
-        `"${l.mentorNaam}"`,
+        l.mentorNaam,
         this.periode(),
         memosCount.toString(),
         prep ? 'Ja' : 'Nee',
         plan ? 'Ja' : 'Nee'
-      ];
-      csvContent += row.join(';') + '\\n';
+      ]);
     });
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Overzicht_${this.klas()}_${this.periode()}.csv`;
-    link.click();
+    downloadCsv(`Overzicht_${this.klas()}_${this.periode()}.csv`, rows);
   }
 }

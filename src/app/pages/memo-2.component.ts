@@ -6,6 +6,7 @@ import { DataService } from '../services/data.service';
 import { AuthService } from '../services/auth.service';
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
+import { parseCsv, headersMatch } from '../utils/csv';
 
 @Component({
   selector: 'app-memo-2',
@@ -307,27 +308,24 @@ export class Memo2Component {
     const reader = new FileReader();
     reader.onload = (e) => {
       const text = e.target?.result as string;
-      const lines = text.split('\n').filter(l => l.trim().length > 0);
-      if (lines.length < 1) return;
+      const rows = parseCsv(text);
+      if (rows.length < 1) return;
 
-      const delimiter = lines[0].includes(';') ? ';' : ',';
-      const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
-      
       const expectedHeaders = ['Leerlingnummer', 'Naam', 'Klas', 'Vak', 'Aandachtspunten', 'Waar zie je dit aan?', 'Wat werkt wel?', 'Actie Leerling (TW1/TW2) / Doorstroom (TW3)', 'Actie Docent'];
-      
-      const headersMatch = expectedHeaders.every((eh, i) => headers[i] === eh);
-      if (!headersMatch) {
+
+      if (!headersMatch(rows[0], expectedHeaders)) {
         alert('Fout: De kolomnamen komen niet overeen met het sjabloon. Gebruik exact het gedownloade sjabloon en pas de titels niet aan.');
         event.target.value = '';
         return;
       }
 
       const rowsToImport = [];
-      for (let i = 1; i < lines.length; i++) {
-        const columns = lines[i].split(delimiter).map(c => c.trim().replace(/^"|"$/g, ''));
-        if (columns.length < expectedHeaders.length) continue;
-        
-        // Skip empty rows (no vak or no content)
+      for (let i = 1; i < rows.length; i++) {
+        // Ontbrekende laatste kolommen aanvullen, zodat een rij waarin de laatste
+        // velden leeg zijn gelaten niet stilzwijgend wordt overgeslagen.
+        const columns = Array.from({ length: expectedHeaders.length }, (_, c) => rows[i][c] ?? '');
+
+        // Lege regels overslaan: geen vak en geen inhoud.
         if (!columns[3] && !columns[5] && !columns[7] && !columns[8]) continue;
 
         rowsToImport.push({
@@ -575,7 +573,23 @@ export class Memo2Component {
       memoData.reflectieOpVorigePeriode = val.reflectieOpVorigePeriode;
     }
 
-    this.dataService.addMemoTW1TW2(memoData);
+    // Eén memo per leerling/vak/toetsweek/schooljaar: werk een bestaande memo bij
+    // in plaats van er een tweede naast te zetten (bijv. eerst Concept, dan Definitief).
+    const bestaandeMemo = this.dataService.memoTW1TW2().find(m =>
+      m.schooljaar === memoData.schooljaar &&
+      m.toetsweek === memoData.toetsweek &&
+      m.leerlingnummer === memoData.leerlingnummer &&
+      m.vak.toLowerCase() === memoData.vak.toLowerCase()
+    );
+
+    if (bestaandeMemo?.id) {
+      // Aanmaakgegevens van de oorspronkelijke memo behouden.
+      memoData.aangemaaktOp = bestaandeMemo.aangemaaktOp;
+      memoData.aangemaaktDoor = bestaandeMemo.aangemaaktDoor;
+      this.dataService.updateMemoTW1TW2(bestaandeMemo.id, memoData);
+    } else {
+      this.dataService.addMemoTW1TW2(memoData);
+    }
 
     if (this.taakId()) {
       const taak = this.dataService.docentTaken().find(t => t.id === this.taakId());

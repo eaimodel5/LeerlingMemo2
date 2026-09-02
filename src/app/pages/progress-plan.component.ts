@@ -222,37 +222,48 @@ export class ProgressPlanComponent {
     return this.dataService.leerlingen().find(l => l.leerlingnummer === this.formValues().leerlingnummer);
   });
 
+  /** Het al opgeslagen voortgangsplan voor de gekozen leerling en periode, of null. */
+  bestaandPlan = computed(() => {
+    const v = this.formValues();
+    if (!v.leerlingnummer || !v.periode) return null;
+    return this.dataService.voortgangsplan().find(item =>
+      item.leerlingnummer === v.leerlingnummer &&
+      item.periode === v.periode &&
+      item.schooljaar === (v.schooljaar || '2026-2027')
+    ) ?? null;
+  });
+
+  /** Waarvoor het formulier het laatst is gevuld, zodat typen niet overschreven wordt. */
+  private laatstGeladen: string | null = null;
+
   constructor() {
+    // Laadt een eerder opgeslagen voortgangsplan in zodra de mentor een leerling of
+    // periode kiest. Leest bewust uit formValues() en niet uit form.value: dat laatste
+    // is geen signal, waardoor dit effect nooit opnieuw zou draaien.
     effect(() => {
-      const l = this.form.value.leerlingnummer;
-      const p = this.form.value.periode;
-      if (l && p) {
-        const existing = this.dataService.voortgangsplan().find(v => v.leerlingnummer === l && v.periode === p && v.schooljaar === '2026-2027');
-        if (existing) {
-          this.form.patchValue({
-            gezamenlijkeConclusie: existing.gezamenlijkeConclusie || '',
-            afspraakLeerling1: existing.afspraakLeerling1 || '',
-            afspraakLeerling2: existing.afspraakLeerling2 || '',
-            afspraakLeerling3: existing.afspraakLeerling3 || '',
-            afspraakDocenten1: existing.afspraakDocenten1 || '',
-            afspraakDocenten2: existing.afspraakDocenten2 || '',
-            afspraakDocenten3: existing.afspraakDocenten3 || '',
-            evaluatieWanneer: existing.evaluatieWanneer || '',
-            evaluatieDoorWie: existing.evaluatieDoorWie || '',
-            terugkoppelingOuders: existing.terugkoppelingOuders || '',
-            status: existing.status || 'Concept'
-          }, { emitEvent: false });
-        } else {
-          this.form.patchValue({
-            gezamenlijkeConclusie: '',
-            afspraakLeerling1: '', afspraakLeerling2: '', afspraakLeerling3: '',
-            afspraakDocenten1: '', afspraakDocenten2: '', afspraakDocenten3: '',
-            evaluatieWanneer: '', evaluatieDoorWie: '',
-            terugkoppelingOuders: '',
-            status: 'Concept'
-          }, { emitEvent: false });
-        }
-      }
+      const v = this.formValues();
+      const existing = this.bestaandPlan();
+      if (!v.leerlingnummer || !v.periode) return;
+
+      // Alleen (her)vullen als de selectie wijzigt of het record voor het eerst binnenkomt.
+      // Zonder deze controle zou elke toetsaanslag het formulier terugzetten.
+      const sleutel = `${v.leerlingnummer}|${v.periode}|${existing?.id ?? 'nieuw'}`;
+      if (sleutel === this.laatstGeladen) return;
+      this.laatstGeladen = sleutel;
+
+      this.form.patchValue({
+        gezamenlijkeConclusie: existing?.gezamenlijkeConclusie || '',
+        afspraakLeerling1: existing?.afspraakLeerling1 || '',
+        afspraakLeerling2: existing?.afspraakLeerling2 || '',
+        afspraakLeerling3: existing?.afspraakLeerling3 || '',
+        afspraakDocenten1: existing?.afspraakDocenten1 || '',
+        afspraakDocenten2: existing?.afspraakDocenten2 || '',
+        afspraakDocenten3: existing?.afspraakDocenten3 || '',
+        evaluatieWanneer: existing?.evaluatieWanneer || '',
+        evaluatieDoorWie: existing?.evaluatieDoorWie || '',
+        terugkoppelingOuders: existing?.terugkoppelingOuders || '',
+        status: existing?.status || 'Concept'
+      }, { emitEvent: false });
     });
     
     this.form.get('leerlingnummer')?.valueChanges.subscribe(() => this.form.updateValueAndValidity());

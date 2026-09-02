@@ -30,18 +30,11 @@ export class AuthService {
     }
   }
 
-  async login(name: string, password: string): Promise<boolean> {
-    if (name === 'Hans' && password === 'EAIMODEL') {
-      const user: AuthUser = {
-        name: 'Hans',
-        email: 'hans@emmauscollege.nl', // Dummy email for superuser
-        role: 'Superuser'
-      };
-      this.setUser(user);
-      return true;
-    }
-    return false;
-  }
+  // Let op: hier stond een inlog met een vaste gebruikersnaam en wachtwoord.
+  // Die waarden kwamen als platte tekst in de JavaScript-bundel terecht en waren
+  // dus voor iedere bezoeker zichtbaar. De beheerder logt nu in met een
+  // toegangscode met de rol 'Superuser'; zie BEVEILIGING.md voor het aanmaken
+  // daarvan. Beschouw het oude wachtwoord als gelekt en gebruik het nergens meer.
 
   async loginWithCode(code: string): Promise<boolean> {
     try {

@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "Leerling": {
+      "title": "Leerling",
+      "description": "Student in the system",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "leerlingnummer": { "type": "string" },
+        "leerling": { "type": "string" },
+        "klas": { "type": "string" },
+        "mentorNaam": { "type": "string" },
+        "mentorEmail": { "type": "string" },
+        "schooljaar": { "type": "string" },
+        "actief": { "type": "boolean" }
+      },
+      "required": ["leerlingnummer", "leerling", "klas", "mentorNaam", "mentorEmail", "schooljaar", "actief"]
+    },
+    "DocentVak": {
+      "title": "DocentVak",
+      "description": "Teacher subject association",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "docentNaam": { "type": "string" },
+        "docentEmail": { "type": "string" },
+        "vak": { "type": "string" },
+        "klas": { "type": "string" },
+        "schooljaar": { "type": "string" },
+        "actief": { "type": "boolean" }
+      },
+      "required": ["docentNaam", "docentEmail", "vak", "klas", "schooljaar", "actief"]
+    },
+    "Memo": {
+      "title": "Memo",
+      "description": "Memo for student",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "schooljaar": { "type": "string" },
+        "leerlingnummer": { "type": "string" },
+        "leerling": { "type": "string" },
+        "klas": { "type": "string" },
+        "docentNaam": { "type": "string" },
+        "docentEmail": { "type": "string" },
+        "vak": { "type": "string" },
+        "docentActie": { "type": "string" },
+        "aangemaaktDoor": { "type": "string" }
+      }
+    },
+    "MentorVoorbereiding": {
+      "title": "MentorVoorbereiding",
+      "description": "Mentor notes per period and student",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "leerlingnummer": { "type": "string" },
+        "periode": { "type": "string" },
+        "schooljaar": { "type": "string" },
+        "mentorGesprokenMet": { "type": "string" },
+        "voortgang": { "type": "string" },
+        "welbevinden": { "type": "string" },
+        "aandachtspunten": { "type": "string" }
+      }
+    },
+    "Voortgangsplan": {
+      "title": "Voortgangsplan",
+      "description": "Progress plan per period and student",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "leerlingnummer": { "type": "string" },
+        "periode": { "type": "string" },
+        "schooljaar": { "type": "string" },
+        "korteVoortgang": { "type": "string" }
+      }
+    },
+    "AccessCode": {
+      "title": "AccessCode",
+      "description": "Login codes for teachers and staff",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "role": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "vak": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "used": { "type": "boolean" }
+      },
+      "required": ["code", "role", "ownerName", "ownerEmail", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/codes/{codeId}": {
+      "schema": { "$ref": "#/entities/AccessCode" },
+      "description": "Login codes"
+    },
+    "/leerlingen/{leerlingId}": {
+      "schema": { "$ref": "#/entities/Leerling" },
+      "description": "Students"
+    },
+    "/docentenVakken/{docentVakId}": {
+      "schema": { "$ref": "#/entities/DocentVak" },
+      "description": "Teacher Subject mappings"
+    },
+    "/memoTW1TW2/{memoId}": {
+      "schema": { "$ref": "#/entities/Memo" },
+      "description": "Memos for TW1/TW2"
+    },
+    "/memoTW3/{memoId}": {
+      "schema": { "$ref": "#/entities/Memo" },
+      "description": "Memos for TW3"
+    },
+    "/mentorVoorbereiding/{prepId}": {
+      "schema": { "$ref": "#/entities/MentorVoorbereiding" },
+      "description": "Mentor preparations"
+    },
+    "/voortgangsplan/{planId}": {
+      "schema": { "$ref": "#/entities/Voortgangsplan" },
+      "description": "Progress plans"
+    }
+  }
+}

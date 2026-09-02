@@ -1,0 +1,85 @@
+<div class="flex flex-col h-full bg-slate-50 relative">
+  <header class="h-16 bg-white border-b border-slate-200 px-8 flex flex-none items-center justify-between sticky top-0 z-10 hidden sm:flex">
+    <h2 class="text-lg font-semibold text-slate-700 flex items-center gap-2">
+      <mat-icon class="text-emerald-600 text-[20px] w-[20px] h-[20px]">terminal</mat-icon> Power Fx Formules & Instructies
+    </h2>
+  </header>
+
+  <div class="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto custom-scrollbar">
+    <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl shadow-sm">
+      <p class="text-sm font-medium text-blue-800 leading-relaxed">
+        Hieronder vind je de gevraagde Power Fx implementatie-details, de SharePoint lijsten structuur en oplossingen voor in een echte Power App omgeving.
+      </p>
+    </div>
+
+    <section class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
+      <h3 class="text-sm font-bold text-slate-700 border-b border-slate-100 pb-2">1 & 2. Filteren van Leerlingen en Docenten</h3>
+      <pre class="bg-slate-800 text-emerald-400 p-4 rounded-md overflow-x-auto text-xs font-mono leading-relaxed shadow-inner border border-slate-700">Filter(
+    Leerlingen;
+    Schooljaar = "2026-2027" && 
+    Actief = true &&
+    Klas = ddbKlas.Selected.Value
+)</pre>
+    </section>
+
+    <section class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
+      <h3 class="text-sm font-bold text-slate-700 border-b border-slate-100 pb-2">3 & 4. Opslaan Memo's (Patch)</h3>
+      <pre class="bg-slate-800 text-emerald-400 p-4 rounded-md overflow-x-auto text-xs font-mono leading-relaxed shadow-inner border border-slate-700">Patch(
+    MemoTW1TW2;
+    Defaults(MemoTW1TW2);
+    &#123;
+        Schooljaar: "2026-2027";
+        Toetsweek: &#123; Value: ddbToetsweek.Selected.Value &#125;; 
+        Leerlingnummer: ddbLeerling.Selected.Leerlingnummer;
+        ...
+    &#125;
+);;</pre>
+    </section>
+
+    <section class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
+      <h3 class="text-sm font-bold text-slate-700 border-b border-slate-100 pb-2">5 & 6. Opslaan Mentorvoorbeiding en Voortgangsplan</h3>
+      <pre class="bg-slate-800 text-emerald-400 p-4 rounded-md overflow-x-auto text-xs font-mono leading-relaxed shadow-inner border border-slate-700">UpdateContext(&#123;
+    varBestaand: LookUp(
+        MentorVoorbereiding;
+        Leerlingnummer = ddbLeerling.Selected.Leerlingnummer &&
+        Periode.Value = ddbPeriode.Selected.Value
+    )
+&#125;);;
+
+Patch(
+    MentorVoorbereiding;
+    If(IsBlank(varBestaand); Defaults(MentorVoorbereiding); varBestaand);
+    &#123;
+        Schooljaar: "2026-2027";
+        ...
+    &#125;
+);;</pre>
+    </section>
+
+    <section class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
+      <h3 class="text-sm font-bold text-slate-700 border-b border-slate-100 pb-2">7. Samenstellen van aandachtspunten</h3>
+      <pre class="bg-slate-800 text-emerald-400 p-4 rounded-md overflow-x-auto text-xs font-mono leading-relaxed shadow-inner border border-slate-700">Concat(
+    Filter(
+        Table(
+            &#123; Check: ThisItem.AandachtInhoudelijkBegrip; Naam: "Inhoudelijk begrip" &#125;;
+            ...
+        );
+        Check = true
+    );
+    Naam;
+    ", "
+)</pre>
+    </section>
+
+    <section class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
+      <h3 class="text-sm font-bold text-slate-700 border-b border-slate-100 pb-2">8 & 9. Samenstellen en Kopiëren van Magister-export</h3>
+      <pre class="bg-slate-800 text-emerald-400 p-4 rounded-md overflow-x-auto text-xs font-mono leading-relaxed shadow-inner border border-slate-700">"Leerling: " & ddbLeerling.Selected.Leerling & Char(10) & 
+Concat(
+    Filter(MemoTW1TW2; Leerlingnummer = ddbLeerling.Selected.Leerlingnummer);
+    "[" & Vak & "] - " & DocentNaam & Char(10)
+)
+...
+Copy(txtExportTekstvak.Text);;</pre>
+    </section>
+  </div>
+</div>

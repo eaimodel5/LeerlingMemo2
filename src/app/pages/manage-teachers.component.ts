@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DataService } from '../services/data.service';
+import { DocentVak } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
 import { parseCsv, downloadCsv } from '../utils/csv';
@@ -11,6 +12,15 @@ import { parseCsv, downloadCsv } from '../utils/csv';
   imports: [ReactiveFormsModule, FormsModule, MatIconModule],
   template: `
     <div class="flex flex-col h-full bg-slate-50 relative">
+      @if (bezig()) {
+        <div class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center">
+          <div class="bg-white rounded-xl shadow-xl px-8 py-6 flex items-center gap-4">
+            <mat-icon class="animate-spin text-slate-400">progress_activity</mat-icon>
+            <span class="text-sm font-medium text-slate-700">Bezig met opslaan, even geduld…</span>
+          </div>
+        </div>
+      }
+
       <header class="h-16 bg-white border-b border-slate-200 px-8 flex flex-none items-center justify-between sticky top-0 z-10 hidden sm:flex">
         <h2 class="text-lg font-semibold text-slate-700">Beheer Docenten / Vakken</h2>
         <div class="flex gap-2 mt-2 sm:mt-0 overflow-x-auto">
@@ -160,6 +170,7 @@ export class ManageTeachersComponent {
   searchQuery = signal('');
   filterKlas = signal('');
   showForm = signal(false);
+  bezig = signal(false);
   editingId = signal<string | null>(null);
 
   form = this.fb.group({
@@ -219,10 +230,8 @@ export class ManageTeachersComponent {
       const headers = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
       const schooljaar = '2026-2027';
 
-      let nieuw = 0;
-      let bijgewerkt = 0;
+      const teSchrijven: { id?: string; data: Omit<DocentVak, 'id'> }[] = [];
       let overgeslagen = 0;
-      let mislukt = 0;
 
       // Binnen één bestand kan dezelfde combinatie twee keer voorkomen. De signal
       // met bestaande koppelingen loopt achter op wat we zojuist hebben weggeschreven,
@@ -265,23 +274,29 @@ export class ManageTeachersComponent {
             : dv.docentNaam.toLowerCase() === docentNaam.toLowerCase())
         );
 
-        try {
-          if (bestaand?.id) {
-            await this.dataService.updateDocentVak(bestaand.id, item);
-            bijgewerkt++;
-          } else {
-            await this.dataService.addDocentVak(item);
-            nieuw++;
-          }
-        } catch {
-          mislukt++;
-        }
+        teSchrijven.push({ id: bestaand?.id, data: item });
       }
 
-      const delen = [`${nieuw} nieuw`, `${bijgewerkt} bijgewerkt`];
-      if (overgeslagen) delen.push(`${overgeslagen} overgeslagen`);
-      if (mislukt) delen.push(`${mislukt} mislukt`);
-      alert('Import klaar: ' + delen.join(', ') + '.');
+      if (teSchrijven.length === 0) {
+        alert('Geen bruikbare regels gevonden. Er is per regel een docent, een vak en een klas nodig.');
+        input.value = '';
+        return;
+      }
+
+      const nieuw = teSchrijven.filter(t => !t.id).length;
+      const bijgewerkt = teSchrijven.length - nieuw;
+
+      this.bezig.set(true);
+      try {
+        await this.dataService.bulkSaveDocentVakken(teSchrijven);
+        const delen = [`${nieuw} nieuw`, `${bijgewerkt} bijgewerkt`];
+        if (overgeslagen) delen.push(`${overgeslagen} overgeslagen`);
+        alert('Import klaar: ' + delen.join(', ') + '.');
+      } catch {
+        alert('Er ging iets mis bij het opslaan. Mogelijk is maar een deel van de lijst weggeschreven; probeer het opnieuw.');
+      } finally {
+        this.bezig.set(false);
+      }
 
       input.value = '';
     };

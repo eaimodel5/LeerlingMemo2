@@ -1,9 +1,11 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DataService } from '../services/data.service';
+import { Leerling } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
 import { parseCsv, downloadCsv } from '../utils/csv';
+import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leerling-import';
 
 @Component({
   selector: 'app-manage-students',
@@ -11,6 +13,15 @@ import { parseCsv, downloadCsv } from '../utils/csv';
   imports: [ReactiveFormsModule, FormsModule, MatIconModule],
   template: `
     <div class="flex flex-col h-full bg-slate-50 relative">
+      @if (bezig()) {
+        <div class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center">
+          <div class="bg-white rounded-xl shadow-xl px-8 py-6 flex items-center gap-4">
+            <mat-icon class="animate-spin text-slate-400">progress_activity</mat-icon>
+            <span class="text-sm font-medium text-slate-700">Bezig met opslaan, even geduld…</span>
+          </div>
+        </div>
+      }
+
       <header class="h-16 bg-white border-b border-slate-200 px-8 flex flex-none items-center justify-between sticky top-0 z-10 hidden sm:flex">
         <h2 class="text-lg font-semibold text-slate-700">Beheer Leerlingen</h2>
         <div class="flex gap-2 mt-2 sm:mt-0 overflow-x-auto">
@@ -34,7 +45,7 @@ import { parseCsv, downloadCsv } from '../utils/csv';
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
           <div class="relative flex-1 min-w-[250px]">
             <mat-icon class="absolute left-3 top-2.5 text-slate-400">search</mat-icon>
-            <input type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" placeholder="Zoek op naam of nummer..." class="w-full pl-10 pr-4 p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
+            <input type="text" [ngModel]="searchQuery()" (ngModelChange)="searchQuery.set($event)" placeholder="Zoek op naam, nummer of mentor..." class="w-full pl-10 pr-4 p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none">
           </div>
           <div>
             <select [ngModel]="filterKlas()" (ngModelChange)="filterKlas.set($event)" class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none min-w-[150px]">
@@ -64,7 +75,7 @@ import { parseCsv, downloadCsv } from '../utils/csv';
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 bg-white">
-              @for (l of filteredLeerlingen(); track l.id) {
+              @for (l of zichtbareLeerlingen(); track l.id) {
                 <tr class="hover:bg-slate-50 transition-colors">
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-500">{{l.leerlingnummer}}</td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{{l.leerling}}</td>
@@ -99,7 +110,19 @@ import { parseCsv, downloadCsv } from '../utils/csv';
               }
             </tbody>
           </table>
+
+          @if (aantalVerborgen() > 0) {
+            <div class="px-6 py-3 bg-amber-50 border-t border-amber-100 text-xs text-amber-800 flex items-center gap-2">
+              <mat-icon class="text-[16px] w-[16px] h-[16px]">filter_list</mat-icon>
+              Nog {{ aantalVerborgen() }} leerlingen niet getoond. Kies een klas of zoek op naam om de lijst te verkleinen.
+            </div>
+          }
         </div>
+
+        <p class="text-xs text-slate-500 px-1">
+          {{ filteredLeerlingen().length }} van {{ totaalLeerlingen() }} leerlingen
+          @if (filterKlas()) { <span>in klas {{ filterKlas() }}</span> }
+        </p>
       </div>
 
       <!-- Formulier Modal -->
@@ -168,6 +191,7 @@ export class ManageStudentsComponent {
   searchQuery = signal('');
   filterKlas = signal('');
   showForm = signal(false);
+  bezig = signal(false);
   editingId = signal<string | null>(null);
 
   form = this.fb.group({
@@ -182,25 +206,43 @@ export class ManageStudentsComponent {
 
   availableKlassen = computed(() => {
     const lln = this.dataService.leerlingen().filter(l => l.schooljaar === '2026-2027');
-    return [...new Set(lln.map(l => l.klas))].sort();
+    // Leerlingen zonder klas leveren anders een lege optie in de keuzelijst op.
+    return [...new Set(lln.map(l => l.klas).filter(klas => klas !== ''))].sort((a, b) => a.localeCompare(b, 'nl'));
   });
 
   filteredLeerlingen = computed(() => {
     let result = this.dataService.leerlingen().filter(l => l.schooljaar === '2026-2027');
-    
+
     if (this.filterKlas()) {
       result = result.filter(l => l.klas === this.filterKlas());
     }
-    
+
     if (this.searchQuery()) {
-      const q = this.searchQuery().toLowerCase();
-      result = result.filter(l => 
-        l.leerling.toLowerCase().includes(q) || 
-        l.leerlingnummer.toLowerCase().includes(q)
+      const q = this.searchQuery().trim().toLowerCase();
+      result = result.filter(l =>
+        l.leerling.toLowerCase().includes(q) ||
+        l.leerlingnummer.toLowerCase().includes(q) ||
+        (l.mentorNaam || '').toLowerCase().includes(q)
       );
     }
-    return result;
+
+    // Op klas en dan op naam, zodat een lijst van ruim duizend leerlingen
+    // leesbaar blijft. localeCompare zet Nederlandse namen in de juiste volgorde.
+    return [...result].sort((a, b) =>
+      a.klas.localeCompare(b.klas, 'nl') || a.leerling.localeCompare(b.leerling, 'nl')
+    );
   });
+
+  /** Hoeveel rijen we tegelijk tonen; meer maakt de tabel merkbaar traag. */
+  readonly maxZichtbaar = 250;
+
+  zichtbareLeerlingen = computed(() => this.filteredLeerlingen().slice(0, this.maxZichtbaar));
+
+  aantalVerborgen = computed(() => Math.max(0, this.filteredLeerlingen().length - this.maxZichtbaar));
+
+  totaalLeerlingen = computed(() =>
+    this.dataService.leerlingen().filter(l => l.schooljaar === '2026-2027').length
+  );
 
   openForm() {
     this.form.reset({ schooljaar: '2026-2027', actief: true });
@@ -225,43 +267,29 @@ export class ManageStudentsComponent {
         return;
       }
 
-      const headers = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
+      const headers = normaliseerKoppen(rows[0]);
       const schooljaar = '2026-2027';
 
-      let nieuw = 0;
-      let bijgewerkt = 0;
+      const teSchrijven: { id?: string; data: Omit<Leerling, 'id'> }[] = [];
       let overgeslagen = 0;
-      let mislukt = 0;
+      let zonderMentor = 0;
+      let zonderMentorEmail = 0;
 
       // Binnen één bestand kan hetzelfde leerlingnummer twee keer voorkomen.
-      // De signal met bestaande leerlingen loopt achter op wat we zojuist hebben
-      // weggeschreven, dus houden we de verwerkte nummers hier ook bij.
       const inDitBestand = new Set<string>();
 
       for (let i = 1; i < rows.length; i++) {
-        const values = rows[i];
-        const obj: Record<string, string> = {};
-        headers.forEach((h, index) => { obj[h] = values[index] ?? ''; });
-
-        const leerlingnummer = obj['leerlingnummer'] || obj['stamnummer'] || obj['nummer'];
-        const leerling = obj['leerling'] || obj['naam'] || obj['roepnaam'];
-        const klas = obj['klas'] || obj['groep'];
-        const mentorNaam = obj['mentornaam'] || obj['mentor'];
-        const mentorEmail = obj['mentoremail'] || '';
+        // De kolomherkenning staat in leerling-import.ts, met tests tegen een
+        // echte Magister-export.
+        const { leerlingnummer, leerling, klas, mentorNaam, mentorEmail, actief } =
+          leesLeerlingRij(rijNaarObject(headers, rows[i]));
 
         if (!leerlingnummer || !leerling) { overgeslagen++; continue; }
         if (inDitBestand.has(leerlingnummer)) { overgeslagen++; continue; }
         inDitBestand.add(leerlingnummer);
 
-        const item = {
-          leerlingnummer: leerlingnummer,
-          leerling: leerling,
-          klas: klas || '',
-          mentorNaam: mentorNaam || '',
-          mentorEmail: mentorEmail || '',
-          schooljaar: schooljaar,
-          actief: obj['actief'] !== 'false' && obj['actief'] !== '0'
-        };
+        if (!mentorNaam) zonderMentor++;
+        if (!mentorEmail) zonderMentorEmail++;
 
         // Ontdubbelen: één leerling per leerlingnummer per schooljaar. Zonder deze
         // controle verdubbelde de hele lijst zodra iemand hetzelfde bestand opnieuw
@@ -270,23 +298,49 @@ export class ManageStudentsComponent {
           l.leerlingnummer === leerlingnummer && l.schooljaar === schooljaar
         );
 
-        try {
-          if (bestaand?.id) {
-            await this.dataService.updateLeerling(bestaand.id, item);
-            bijgewerkt++;
-          } else {
-            await this.dataService.addLeerling(item);
-            nieuw++;
+        teSchrijven.push({
+          id: bestaand?.id,
+          data: {
+            leerlingnummer: leerlingnummer,
+            leerling: leerling,
+            klas: klas,
+            mentorNaam: mentorNaam,
+            mentorEmail: mentorEmail,
+            schooljaar: schooljaar,
+            actief: actief
           }
-        } catch {
-          mislukt++;
-        }
+        });
       }
 
-      const delen = [`${nieuw} nieuw`, `${bijgewerkt} bijgewerkt`];
-      if (overgeslagen) delen.push(`${overgeslagen} overgeslagen`);
-      if (mislukt) delen.push(`${mislukt} mislukt`);
-      alert('Import klaar: ' + delen.join(', ') + '.');
+      if (teSchrijven.length === 0) {
+        alert('Geen bruikbare regels gevonden. Er is per regel minimaal een leerlingnummer en een naam nodig.');
+        input.value = '';
+        return;
+      }
+
+      const nieuw = teSchrijven.filter(t => !t.id).length;
+      const bijgewerkt = teSchrijven.length - nieuw;
+
+      this.bezig.set(true);
+      try {
+        await this.dataService.bulkSaveLeerlingen(teSchrijven);
+
+        const delen = [`${nieuw} nieuw`, `${bijgewerkt} bijgewerkt`];
+        if (overgeslagen) delen.push(`${overgeslagen} overgeslagen`);
+
+        let melding = 'Import klaar: ' + delen.join(', ') + '.';
+        if (zonderMentor) {
+          melding += `\n\nBij ${zonderMentor} leerlingen stond geen mentor in het bestand.`;
+        }
+        if (zonderMentorEmail === teSchrijven.length) {
+          melding += '\n\nHet bestand bevat geen e-mailadressen van mentoren. Die velden zijn leeg gelaten; vul ze aan als je mentoren aan hun eigen klas wilt koppelen.';
+        }
+        alert(melding);
+      } catch {
+        alert('Er ging iets mis bij het opslaan. Mogelijk is maar een deel van de lijst weggeschreven; probeer het opnieuw.');
+      } finally {
+        this.bezig.set(false);
+      }
 
       input.value = '';
     };
@@ -310,15 +364,30 @@ export class ManageStudentsComponent {
     this.showForm.set(true);
   }
 
-  deleteAllStudents() {
-    if (confirm('Weet je zeker dat je ALLE leerlingen in deze lijst wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
-      const students = this.filteredLeerlingen();
-      for (const student of students) {
-        if (student.id) {
-          this.dataService.deleteLeerling(student.id);
-        }
-      }
-      alert(`${students.length} leerlingen succesvol verwijderd.`);
+  async deleteAllStudents() {
+    // Let op: dit verwijdert wat er nú gefilterd op het scherm staat, niet alleen
+    // de zichtbare 250 rijen. De melding noemt daarom het echte aantal.
+    const teVerwijderen = this.filteredLeerlingen();
+    if (teVerwijderen.length === 0) return;
+
+    const waarover = this.filterKlas() || this.searchQuery()
+      ? `de ${teVerwijderen.length} leerlingen die nu gefilterd zijn`
+      : `ALLE ${teVerwijderen.length} leerlingen`;
+
+    if (!confirm(`Weet je zeker dat je ${waarover} wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`)) {
+      return;
+    }
+
+    const ids = teVerwijderen.map(l => l.id).filter((id): id is string => !!id);
+
+    this.bezig.set(true);
+    try {
+      await this.dataService.bulkDeleteLeerlingen(ids);
+      alert(`${ids.length} leerlingen verwijderd.`);
+    } catch {
+      alert('Er ging iets mis bij het verwijderen. Mogelijk is maar een deel verwijderd.');
+    } finally {
+      this.bezig.set(false);
     }
   }
 

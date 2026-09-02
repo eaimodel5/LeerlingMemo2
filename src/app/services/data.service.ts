@@ -102,6 +102,43 @@ export class DataService {
     return Math.random().toString(36).substring(2, 15);
   }
 
+  /**
+   * Schrijft of werkt veel documenten in één keer bij.
+   *
+   * Een klassenlijst uit Magister telt al snel 1.500 leerlingen. Die stuk voor
+   * stuk wegschrijven kost evenveel netwerkrondjes en duurt minuten; met
+   * gebundelde schrijfacties zijn het er een handvol. Firestore staat 500
+   * bewerkingen per bundel toe, daarom knippen we in stukken van 450.
+   */
+  private async bulkSave<T extends object>(collectionName: string, items: { id?: string; data: T }[]) {
+    const { writeBatch } = await import('firebase/firestore');
+    const BUNDEL = 450;
+
+    for (let start = 0; start < items.length; start += BUNDEL) {
+      const batch = writeBatch(db);
+      for (const item of items.slice(start, start + BUNDEL)) {
+        const id = item.id ?? this.generateId();
+        // merge zodat bij het bijwerken velden blijven staan die niet in de CSV zitten.
+        batch.set(doc(db, collectionName, id), { ...item.data, id }, { merge: true });
+      }
+      await batch.commit();
+    }
+  }
+
+  /** Verwijdert veel documenten in één keer, zie bulkSave voor de reden. */
+  private async bulkDelete(collectionName: string, ids: string[]) {
+    const { writeBatch } = await import('firebase/firestore');
+    const BUNDEL = 450;
+
+    for (let start = 0; start < ids.length; start += BUNDEL) {
+      const batch = writeBatch(db);
+      for (const id of ids.slice(start, start + BUNDEL)) {
+        batch.delete(doc(db, collectionName, id));
+      }
+      await batch.commit();
+    }
+  }
+
   // --- Leerlingen ---
   async addLeerling(item: Omit<Leerling, 'id'>) {
     try {
@@ -120,6 +157,19 @@ export class DataService {
     try {
       const { deleteDoc } = await import('firebase/firestore');
       await deleteDoc(doc(db, 'leerlingen', id));
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'leerlingen'); }
+  }
+
+  /** Slaat een hele klassenlijst in één keer op; id gevuld = bijwerken, leeg = nieuw. */
+  async bulkSaveLeerlingen(items: { id?: string; data: Omit<Leerling, 'id'> }[]) {
+    try {
+      await this.bulkSave('leerlingen', items);
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'leerlingen'); }
+  }
+
+  async bulkDeleteLeerlingen(ids: string[]) {
+    try {
+      await this.bulkDelete('leerlingen', ids);
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'leerlingen'); }
   }
 
@@ -142,6 +192,13 @@ export class DataService {
       const { deleteDoc } = await import('firebase/firestore');
       await deleteDoc(doc(db, 'docentenVakken', id));
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'docentenVakken'); }
+  }
+
+  /** Slaat een hele docenten-/vakkenlijst in één keer op. */
+  async bulkSaveDocentVakken(items: { id?: string; data: Omit<DocentVak, 'id'> }[]) {
+    try {
+      await this.bulkSave('docentenVakken', items);
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'docentenVakken'); }
   }
 
   // --- Memos TW1/TW2 ---

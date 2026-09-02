@@ -3,6 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DataService } from '../services/data.service';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
+import { parseCsv, downloadCsv } from '../utils/csv';
 
 @Component({
   selector: 'app-manage-students',
@@ -208,65 +209,95 @@ export class ManageStudentsComponent {
   }
 
   importCSV(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const text = e.target?.result as string;
       if (!text) return;
-      
-      const lines = text.split('\n');
-      if (lines.length < 2) return;
-      
-      const delimiter = lines[0].includes(';') ? ';' : ',';
-      const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
-      
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        const values = line.split(delimiter).map(v => v.trim());
-        const obj: any = {};
-        
-        headers.forEach((h, index) => {
-          obj[h] = values[index];
-        });
-        
-        const leerlingnummer = obj.leerlingnummer || obj.stamnummer || obj.nummer;
-        const leerling = obj.leerling || obj.naam || obj.roepnaam;
-        const klas = obj.klas || obj.groep;
-        const mentorNaam = obj.mentornaam || obj.mentor;
-        const mentorEmail = obj.mentoremail || '';
 
-        if (leerlingnummer && leerling) {
-            this.dataService.addLeerling({
-                leerlingnummer: leerlingnummer,
-                leerling: leerling,
-                klas: klas || '',
-                mentorNaam: mentorNaam || '',
-                mentorEmail: mentorEmail || '',
-                schooljaar: '2026-2027', // Auto-update naar huidig schooljaar in app
-                actief: obj.actief !== 'false' && obj.actief !== '0'
-            });
+      const rows = parseCsv(text);
+      if (rows.length < 2) {
+        alert('Er staan geen regels onder de kopregel. Controleer of je het juiste bestand hebt gekozen.');
+        input.value = '';
+        return;
+      }
+
+      const headers = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
+      const schooljaar = '2026-2027';
+
+      let nieuw = 0;
+      let bijgewerkt = 0;
+      let overgeslagen = 0;
+      let mislukt = 0;
+
+      // Binnen één bestand kan hetzelfde leerlingnummer twee keer voorkomen.
+      // De signal met bestaande leerlingen loopt achter op wat we zojuist hebben
+      // weggeschreven, dus houden we de verwerkte nummers hier ook bij.
+      const inDitBestand = new Set<string>();
+
+      for (let i = 1; i < rows.length; i++) {
+        const values = rows[i];
+        const obj: Record<string, string> = {};
+        headers.forEach((h, index) => { obj[h] = values[index] ?? ''; });
+
+        const leerlingnummer = obj['leerlingnummer'] || obj['stamnummer'] || obj['nummer'];
+        const leerling = obj['leerling'] || obj['naam'] || obj['roepnaam'];
+        const klas = obj['klas'] || obj['groep'];
+        const mentorNaam = obj['mentornaam'] || obj['mentor'];
+        const mentorEmail = obj['mentoremail'] || '';
+
+        if (!leerlingnummer || !leerling) { overgeslagen++; continue; }
+        if (inDitBestand.has(leerlingnummer)) { overgeslagen++; continue; }
+        inDitBestand.add(leerlingnummer);
+
+        const item = {
+          leerlingnummer: leerlingnummer,
+          leerling: leerling,
+          klas: klas || '',
+          mentorNaam: mentorNaam || '',
+          mentorEmail: mentorEmail || '',
+          schooljaar: schooljaar,
+          actief: obj['actief'] !== 'false' && obj['actief'] !== '0'
+        };
+
+        // Ontdubbelen: één leerling per leerlingnummer per schooljaar. Zonder deze
+        // controle verdubbelde de hele lijst zodra iemand hetzelfde bestand opnieuw
+        // importeerde na een correctie.
+        const bestaand = this.dataService.leerlingen().find(l =>
+          l.leerlingnummer === leerlingnummer && l.schooljaar === schooljaar
+        );
+
+        try {
+          if (bestaand?.id) {
+            await this.dataService.updateLeerling(bestaand.id, item);
+            bijgewerkt++;
+          } else {
+            await this.dataService.addLeerling(item);
+            nieuw++;
+          }
+        } catch {
+          mislukt++;
         }
       }
-      
-      alert('Leerlingen succesvol geïmporteerd!');
-      // reset input
-      (event.target as HTMLInputElement).value = '';
+
+      const delen = [`${nieuw} nieuw`, `${bijgewerkt} bijgewerkt`];
+      if (overgeslagen) delen.push(`${overgeslagen} overgeslagen`);
+      if (mislukt) delen.push(`${mislukt} mislukt`);
+      alert('Import klaar: ' + delen.join(', ') + '.');
+
+      input.value = '';
     };
     reader.readAsText(file);
   }
 
   downloadTemplate() {
-    const headers = ['leerlingnummer', 'leerling', 'klas', 'mentorNaam', 'mentorEmail', 'schooljaar', 'actief'];
-    const csvContent = headers.join(',') + '\\n114334,Dae Aartsen,2HJ,Rumeysa Karaarslan,rkaraarslan@emmauscollege.nl,2026-2027,true';
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'leerlingen_template.csv';
-    link.click();
+    downloadCsv('leerlingen_template.csv', [
+      ['leerlingnummer', 'leerling', 'klas', 'mentorNaam', 'mentorEmail', 'schooljaar', 'actief'],
+      ['114334', 'Dae Aartsen', '2HJ', 'Rumeysa Karaarslan', 'rkaraarslan@emmauscollege.nl', '2026-2027', 'true']
+    ], ',');
   }
 
   closeForm() {

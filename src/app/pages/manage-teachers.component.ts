@@ -3,6 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DataService } from '../services/data.service';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
+import { parseCsv, downloadCsv } from '../utils/csv';
 
 @Component({
   selector: 'app-manage-teachers',
@@ -199,63 +200,99 @@ export class ManageTeachersComponent {
   }
 
   importCSV(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const text = e.target?.result as string;
       if (!text) return;
-      
-      const lines = text.split('\n');
-      if (lines.length < 2) return;
-      
-      const delimiter = lines[0].includes(';') ? ';' : ',';
-      const headers = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
-      
-      for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        const values = line.split(delimiter).map(v => v.trim());
-        const obj: any = {};
-        
-        headers.forEach((h, index) => {
-          obj[h] = values[index];
-        });
-        
-        const docentNaam = obj.docentnaam || obj.docent || obj.naam;
-        const docentEmail = obj.docentemail || obj.email || '';
-        const vak = obj.vak || obj.vaknaam;
-        const klas = obj.klas || obj.groep;
-        
-        if (docentNaam && vak && klas) {
-            this.dataService.addDocentVak({
-                docentNaam: docentNaam,
-                docentEmail: docentEmail,
-                vak: vak,
-                klas: klas,
-                schooljaar: '2026-2027', // Auto-update naar huidig schooljaar in app
-                actief: obj.actief !== 'false' && obj.actief !== '0'
-            });
+
+      const rows = parseCsv(text);
+      if (rows.length < 2) {
+        alert('Er staan geen regels onder de kopregel. Controleer of je het juiste bestand hebt gekozen.');
+        input.value = '';
+        return;
+      }
+
+      const headers = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, ''));
+      const schooljaar = '2026-2027';
+
+      let nieuw = 0;
+      let bijgewerkt = 0;
+      let overgeslagen = 0;
+      let mislukt = 0;
+
+      // Binnen één bestand kan dezelfde combinatie twee keer voorkomen. De signal
+      // met bestaande koppelingen loopt achter op wat we zojuist hebben weggeschreven,
+      // dus houden we de verwerkte combinaties hier ook bij.
+      const inDitBestand = new Set<string>();
+
+      for (let i = 1; i < rows.length; i++) {
+        const values = rows[i];
+        const obj: Record<string, string> = {};
+        headers.forEach((h, index) => { obj[h] = values[index] ?? ''; });
+
+        const docentNaam = obj['docentnaam'] || obj['docent'] || obj['naam'];
+        const docentEmail = obj['docentemail'] || obj['email'] || '';
+        const vak = obj['vak'] || obj['vaknaam'];
+        const klas = obj['klas'] || obj['groep'];
+
+        if (!docentNaam || !vak || !klas) { overgeslagen++; continue; }
+
+        const sleutel = `${(docentEmail || docentNaam).toLowerCase()}|${vak.toLowerCase()}|${klas.toLowerCase()}`;
+        if (inDitBestand.has(sleutel)) { overgeslagen++; continue; }
+        inDitBestand.add(sleutel);
+
+        const item = {
+          docentNaam: docentNaam,
+          docentEmail: docentEmail,
+          vak: vak,
+          klas: klas,
+          schooljaar: schooljaar,
+          actief: obj['actief'] !== 'false' && obj['actief'] !== '0'
+        };
+
+        // Ontdubbelen: één koppeling per docent, vak, klas en schooljaar. Zonder deze
+        // controle verdubbelde de lijst bij elke herhaalde import.
+        const bestaand = this.dataService.docentVakken().find(dv =>
+          dv.schooljaar === schooljaar &&
+          dv.klas.toLowerCase() === klas.toLowerCase() &&
+          dv.vak.toLowerCase() === vak.toLowerCase() &&
+          (docentEmail
+            ? dv.docentEmail.toLowerCase() === docentEmail.toLowerCase()
+            : dv.docentNaam.toLowerCase() === docentNaam.toLowerCase())
+        );
+
+        try {
+          if (bestaand?.id) {
+            await this.dataService.updateDocentVak(bestaand.id, item);
+            bijgewerkt++;
+          } else {
+            await this.dataService.addDocentVak(item);
+            nieuw++;
+          }
+        } catch {
+          mislukt++;
         }
       }
-      
-      alert('Vakdocenten succesvol geïmporteerd!');
-      // reset input
-      (event.target as HTMLInputElement).value = '';
+
+      const delen = [`${nieuw} nieuw`, `${bijgewerkt} bijgewerkt`];
+      if (overgeslagen) delen.push(`${overgeslagen} overgeslagen`);
+      if (mislukt) delen.push(`${mislukt} mislukt`);
+      alert('Import klaar: ' + delen.join(', ') + '.');
+
+      input.value = '';
     };
     reader.readAsText(file);
   }
 
   downloadTemplate() {
-    const headers = ['docentNaam', 'docentEmail', 'vak', 'klas', 'schooljaar', 'actief'];
-    const csvContent = headers.join(',') + '\\nJ. de Vries,jdevries@emmauscollege.nl,Wiskunde,2HJ,2026-2027,true';
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'docenten_vakken_template.csv';
-    link.click();
+    downloadCsv('docenten_vakken_template.csv', [
+      ['docentNaam', 'docentEmail', 'vak', 'klas', 'schooljaar', 'actief'],
+      ['J. de Vries', 'jdevries@emmauscollege.nl', 'Wiskunde', '2HJ', '2026-2027', 'true']
+    ], ',');
   }
 
   closeForm() {

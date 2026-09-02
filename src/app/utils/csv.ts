@@ -8,6 +8,8 @@
  * alle import- en exportknoppen gebruikt.
  */
 
+import { downloadBestand } from './download';
+
 /** Byte order mark die Excel voor de zekerheid aan UTF-8-bestanden toevoegt. */
 const BOM = '﻿';
 
@@ -108,14 +110,7 @@ export function toCsv(rows: (string | number | null | undefined)[][], delimiter 
  * namen als "Rumeysa Karaarslan" of "José" goed weergeeft.
  */
 export function downloadCsv(filename: string, rows: (string | number | null | undefined)[][], delimiter = ';'): void {
-  const blob = new Blob([BOM + toCsv(rows, delimiter)], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.click();
-  // De object-URL vrijgeven, anders blijft het bestand in het geheugen staan.
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  downloadBestand(filename, BOM + toCsv(rows, delimiter), 'text/csv;charset=utf-8;');
 }
 
 /**

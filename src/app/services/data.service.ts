@@ -35,7 +35,36 @@ interface FirestoreErrorInfo {
   }
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+/**
+ * Vertaalt een Firestore-foutcode naar iets wat een docent of mentor begrijpt.
+ * De technische details blijven in de console staan.
+ */
+function leesbareMelding(error: unknown): string {
+  const code = (error as { code?: string })?.code ?? '';
+  switch (code) {
+    case 'permission-denied':
+      return 'Je hebt geen rechten om dit op te slaan. Log opnieuw in of vraag de beheerder om hulp.';
+    case 'unavailable':
+    case 'deadline-exceeded':
+      return 'Geen verbinding met de database. Controleer je internetverbinding en probeer het opnieuw.';
+    case 'unauthenticated':
+      return 'Je sessie is verlopen. Log opnieuw in en probeer het nog een keer.';
+    case 'not-found':
+      return 'Dit item bestaat niet meer. Mogelijk heeft iemand anders het verwijderd.';
+    case 'resource-exhausted':
+      return 'De database is tijdelijk overbelast. Probeer het over een paar minuten opnieuw.';
+    default:
+      return 'Opslaan is niet gelukt. Je invoer staat nog in het formulier; probeer het opnieuw.';
+  }
+}
+
+/**
+ * Logt de technische details en gooit een fout met een leesbare tekst.
+ *
+ * Gooide eerder een JSON-blok als foutmelding, dat rechtstreeks in beeld kwam
+ * als er al iets mee werd gedaan. De aanroeper kan nu gewoon `e.message` tonen.
+ */
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -53,7 +82,10 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+
+  const fout = new Error(leesbareMelding(error));
+  (fout as Error & { technischeDetails?: string }).technischeDetails = JSON.stringify(errInfo);
+  throw fout;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -67,6 +99,14 @@ export class DataService {
   classLocks = signal<ClassLock[]>([]);
   docentTaken = signal<DocentTaak[]>([]);
 
+  /**
+   * Gevuld zodra een van de luisteraars de database niet meer kan bereiken.
+   * De luisteraars gooiden hier eerder een fout, maar niemand vangt die op in
+   * een asynchrone callback: het werd een onafgevangen fout in de console, de
+   * luisteraar was dood en het scherm bleef leeg alsof er geen gegevens waren.
+   */
+  verbindingsfout = signal<string | null>(null);
+
   constructor() {
     this.initData();
   }
@@ -74,32 +114,46 @@ export class DataService {
   private initData() {
     onSnapshot(collection(db, 'leerlingen'), (snapshot) => {
       this.leerlingen.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Leerling)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'leerlingen'));
+    }, (error) => this.meldVerbindingsprobleem(error, 'leerlingen'));
     onSnapshot(collection(db, 'docentenVakken'), (snapshot) => {
       this.docentVakken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentVak)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'docentenVakken'));
+    }, (error) => this.meldVerbindingsprobleem(error, 'docentenVakken'));
     onSnapshot(collection(db, 'memoTW1TW2'), (snapshot) => {
       this.memoTW1TW2.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MemoTW1TW2)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'memoTW1TW2'));
+    }, (error) => this.meldVerbindingsprobleem(error, 'memoTW1TW2'));
     onSnapshot(collection(db, 'memoTW3'), (snapshot) => {
       this.memoTW3.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MemoTW3)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'memoTW3'));
+    }, (error) => this.meldVerbindingsprobleem(error, 'memoTW3'));
     onSnapshot(collection(db, 'mentorVoorbereiding'), (snapshot) => {
       this.mentorVoorbereiding.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MentorVoorbereiding)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'mentorVoorbereiding'));
+    }, (error) => this.meldVerbindingsprobleem(error, 'mentorVoorbereiding'));
     onSnapshot(collection(db, 'voortgangsplan'), (snapshot) => {
       this.voortgangsplan.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Voortgangsplan)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'voortgangsplan'));
+    }, (error) => this.meldVerbindingsprobleem(error, 'voortgangsplan'));
     onSnapshot(collection(db, 'classLocks'), (snapshot) => {
       this.classLocks.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as ClassLock)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'classLocks'));
+    }, (error) => this.meldVerbindingsprobleem(error, 'classLocks'));
     onSnapshot(collection(db, 'docentTaken'), (snapshot) => {
       this.docentTaken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentTaak)));
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'docentTaken'));
+    }, (error) => this.meldVerbindingsprobleem(error, 'docentTaken'));
+  }
+
+  /** Zet de verbindingsfout klaar voor het scherm in plaats van te gooien. */
+  private meldVerbindingsprobleem(error: unknown, pad: string) {
+    console.error(`Firestore-luisteraar op '${pad}' gaf een fout:`, error);
+    // Alleen in de browser. Tijdens het vooraf renderen op de server zou een
+    // tijdelijke storing anders als waarschuwing in de statische pagina belanden.
+    if (typeof window === 'undefined') return;
+    this.verbindingsfout.set(leesbareMelding(error));
   }
 
   private generateId(): string {
-    return Math.random().toString(36).substring(2, 15);
+    // randomUUID waar beschikbaar; Math.random gaf ~60 bits en is niet bedoeld
+    // om unieke sleutels mee te maken.
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
   }
 
   /**

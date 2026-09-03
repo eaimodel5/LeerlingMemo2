@@ -19,7 +19,7 @@ export interface LeerlingRij {
 
 /** Maakt kopteksten vergelijkbaar: zonder hoofdletters, spaties en BOM. */
 export function normaliseerKoppen(koppen: string[]): string[] {
-  return koppen.map(kop => kop.replace(/^﻿/, '').trim().toLowerCase().replace(/\s+/g, ''));
+  return koppen.map(kop => kop.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/\s+/g, ''));
 }
 
 /** Zet een rij om naar een object met de genormaliseerde koptekst als sleutel. */

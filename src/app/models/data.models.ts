@@ -93,6 +93,8 @@ export interface MemoTW1TW2 {
   aangemaaktDoor: string;
   aangemaaktOp: string;
   gewijzigdOp: string;
+  /** Wie de laatste wijziging deed; nodig om te zien of een mentor de tekst van een docent heeft aangepast. */
+  gewijzigdDoor?: string;
 }
 
 export interface MemoTW3 {
@@ -119,6 +121,8 @@ export interface MemoTW3 {
   aangemaaktDoor: string;
   aangemaaktOp: string;
   gewijzigdOp: string;
+  /** Wie de laatste wijziging deed; nodig om te zien of een mentor de tekst van een docent heeft aangepast. */
+  gewijzigdDoor?: string;
 }
 
 export interface MentorVoorbereiding {
@@ -138,6 +142,8 @@ export interface MentorVoorbereiding {
   aangemaaktDoor: string;
   aangemaaktOp: string;
   gewijzigdOp: string;
+  /** Wie de laatste wijziging deed; nodig om te zien of een mentor de tekst van een docent heeft aangepast. */
+  gewijzigdDoor?: string;
 }
 
 export interface Voortgangsplan {
@@ -163,4 +169,6 @@ export interface Voortgangsplan {
   aangemaaktDoor: string;
   aangemaaktOp: string;
   gewijzigdOp: string;
+  /** Wie de laatste wijziging deed; nodig om te zien of een mentor de tekst van een docent heeft aangepast. */
+  gewijzigdDoor?: string;
 }

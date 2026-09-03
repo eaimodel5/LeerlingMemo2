@@ -44,7 +44,14 @@ export interface DocentTaak {
   docentNaam: string;
   vak: string;
   mentorEmail: string;
+  /**
+   * Wordt niet meer gebruikt om te bepalen of het gedaan is — dat leiden we af
+   * uit het bestaan van de memo (zie utils/taak-status.ts). Blijft staan zodat
+   * bestaande documenten in Firestore geldig blijven.
+   */
   status: 'Open' | 'Ingevuld';
+  /** Wanneer de mentor voor het laatst een herinnering heeft gestuurd. */
+  herinnerdOp?: string;
   aangemaaktOp: string;
   gewijzigdOp: string;
 }

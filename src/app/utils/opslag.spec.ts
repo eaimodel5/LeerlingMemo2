@@ -24,15 +24,22 @@ describe('wachtOpOpslag', () => {
   });
 
   it('laat een late fout geen onafgevangen belofte worden', async () => {
+    // Draait zowel onder Node als in de browsertestomgeving; daarom via globalThis
+    // in plaats van een rechtstreekse verwijzing naar process.
+    const nodeProces = (globalThis as { process?: { on?: Function; off?: Function } }).process;
     const opgevangen: unknown[] = [];
-    const luister = (e: PromiseRejectionEvent | { reason?: unknown }) => opgevangen.push(e);
-    process.on('unhandledRejection', luister);
+    const luister = (reden: unknown) => opgevangen.push(reden);
+
+    if (nodeProces?.on) nodeProces.on('unhandledRejection', luister);
+    else globalThis.addEventListener?.('unhandledrejection', luister as EventListener);
 
     const laatFout = new Promise((_, mislukt) => setTimeout(() => mislukt(new Error('te laat')), 15));
     await expect(wachtOpOpslag(laatFout, 5)).resolves.toBe('wacht-op-verbinding');
     await new Promise(klaar => setTimeout(klaar, 40));
 
-    process.off('unhandledRejection', luister);
+    if (nodeProces?.off) nodeProces.off('unhandledRejection', luister);
+    else globalThis.removeEventListener?.('unhandledrejection', luister as EventListener);
+
     expect(opgevangen).toEqual([]);
   });
 });

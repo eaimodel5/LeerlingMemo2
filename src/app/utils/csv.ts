@@ -11,7 +11,7 @@
 import { downloadBestand } from './download';
 
 /** Byte order mark die Excel voor de zekerheid aan UTF-8-bestanden toevoegt. */
-const BOM = '﻿';
+const BOM = '\uFEFF';
 
 /**
  * Bepaalt of het bestand puntkomma's of komma's gebruikt, door alleen te tellen
@@ -119,7 +119,7 @@ export function downloadCsv(filename: string, rows: (string | number | null | un
  * kolommen niet aanpast maar wel opnieuw opslaat geen foutmelding krijgt.
  */
 export function headersMatch(headers: string[], expected: string[]): boolean {
-  const normalize = (value: string) => value.replace(/^﻿/, '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const normalize = (value: string) => value.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (headers.length < expected.length) return false;
   return expected.every((column, index) => normalize(headers[index] ?? '') === normalize(column));
 }

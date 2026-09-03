@@ -5,6 +5,7 @@ import { DataService } from '../services/data.service';
 import { AuthService } from '../services/auth.service';
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
+import { wachtOpOpslag, Melding, MELDING_BEVESTIGD, MELDING_WACHT, meldingBijFout } from '../utils/opslag';
 
 @Component({
   selector: 'app-progress-plan',
@@ -19,10 +20,10 @@ import { CommonModule } from '@angular/common';
             <mat-icon class="text-[16px] w-[16px] h-[16px]">print</mat-icon>
             <span class="hidden md:inline">Print</span>
           </button>
-          <button type="button" (click)="submitDraft()" class="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md shadow-sm transition-colors ml-2 flex items-center gap-1.5">
+          <button type="button" (click)="submitDraft()" [disabled]="bezig()" class="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md shadow-sm transition-colors ml-2 flex items-center gap-1.5">
              <mat-icon class="text-[16px] w-[16px] h-[16px]">save</mat-icon> <span class="hidden md:inline">Concept</span>
           </button>
-          <button type="button" (click)="submitFinal()" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition-colors flex items-center gap-1.5">
+          <button type="button" (click)="submitFinal()" [disabled]="bezig()" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition-colors flex items-center gap-1.5">
              <mat-icon class="text-[16px] w-[16px] h-[16px]">check_circle</mat-icon> Definitief
           </button>
         </div>
@@ -43,10 +44,18 @@ import { CommonModule } from '@angular/common';
         </div>
       </div>
 
-      @if (showSuccess()) {
-        <div class="m-8 mb-0 p-4 bg-emerald-50 text-emerald-800 rounded-lg flex items-center gap-3 border border-emerald-200 animate-in fade-in zoom-in duration-300 print:hidden">
-          <mat-icon>check_circle</mat-icon>
-          <span>Voortgangsplan is succesvol opgeslagen!</span>
+      @if (melding(); as m) {
+        <div class="m-8 mb-0 p-4 rounded-lg flex items-start gap-3 border animate-in fade-in zoom-in duration-300 print:hidden"
+             [class.bg-emerald-50]="m.soort === 'ok'" [class.text-emerald-800]="m.soort === 'ok'" [class.border-emerald-200]="m.soort === 'ok'"
+             [class.bg-amber-50]="m.soort === 'wacht'" [class.text-amber-900]="m.soort === 'wacht'" [class.border-amber-200]="m.soort === 'wacht'"
+             [class.bg-red-50]="m.soort === 'fout'" [class.text-red-800]="m.soort === 'fout'" [class.border-red-200]="m.soort === 'fout'">
+          <mat-icon [class.text-emerald-500]="m.soort === 'ok'" [class.text-amber-500]="m.soort === 'wacht'" [class.text-red-500]="m.soort === 'fout'">
+            {{ m.soort === 'ok' ? 'check_circle' : m.soort === 'wacht' ? 'cloud_upload' : 'error' }}
+          </mat-icon>
+          <div>
+            <p class="font-bold">{{ m.soort === 'ok' ? 'Opgeslagen' : m.soort === 'wacht' ? 'Nog niet bevestigd' : 'Niet opgeslagen' }}</p>
+            <p class="text-sm">{{ m.tekst }}</p>
+          </div>
         </div>
       }
 
@@ -168,7 +177,7 @@ import { CommonModule } from '@angular/common';
                  </div>
                  
                  <div class="sm:hidden flex gap-2 print:hidden">
-                   <button type="button" (click)="submitFinal()" class="px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-md shadow-sm transition-colors">Opslaan</button>
+                   <button type="button" (click)="submitFinal()" [disabled]="bezig()" class="px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-md shadow-sm transition-colors">Opslaan</button>
                  </div>
                </div>
             </div>
@@ -184,7 +193,8 @@ export class ProgressPlanComponent {
   private dataService = inject(DataService);
   private authService = inject(AuthService);
 
-  showSuccess = signal(false);
+  melding = signal<Melding | null>(null);
+  bezig = signal(false);
   today = new Date();
 
   form = this.fb.group({
@@ -278,17 +288,17 @@ export class ProgressPlanComponent {
     window.print();
   }
 
-  submitDraft() {
+  async submitDraft() {
     this.form.patchValue({ status: 'Concept' });
-    this.onSubmit();
+    await this.onSubmit();
   }
 
-  submitFinal() {
+  async submitFinal() {
     this.form.patchValue({ status: 'Definitief' });
-    this.onSubmit();
+    await this.onSubmit();
   }
 
-  private onSubmit() {
+  private async onSubmit() {
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -298,7 +308,12 @@ export class ProgressPlanComponent {
     const leerling = this.filteredLeerlingen().find(l => l.leerlingnummer === val.leerlingnummer);
     if (!leerling) return;
 
-    this.dataService.saveVoortgangsplan({
+    // Wachten op de opslag voordat we succes melden; de melding verscheen eerder
+    // ook als de schrijfactie mislukte.
+    this.bezig.set(true);
+    this.melding.set(null);
+    try {
+      const uitkomst = await wachtOpOpslag(this.dataService.saveVoortgangsplan({
       schooljaar: val.schooljaar!,
       periode: val.periode! as any,
       leerlingnummer: leerling.leerlingnummer,
@@ -319,10 +334,21 @@ export class ProgressPlanComponent {
       status: val.status as any,
       aangemaaktDoor: this.authService.currentUser()?.email || 'mentor@school.nl',
       aangemaaktOp: new Date().toISOString(),
-      gewijzigdOp: new Date().toISOString()
-    });
+      gewijzigdOp: new Date().toISOString(),
+      gewijzigdDoor: this.authService.currentUser()?.email || ''
+      }));
 
-    this.showSuccess.set(true);
-    setTimeout(() => this.showSuccess.set(false), 3000);
+      if (uitkomst === 'bevestigd') {
+        this.melding.set(MELDING_BEVESTIGD('Voortgangsplan'));
+        setTimeout(() => { if (this.melding()?.soort === 'ok') this.melding.set(null); }, 4000);
+      } else {
+        this.melding.set(MELDING_WACHT);
+      }
+    } catch (e) {
+      // De invoer blijft staan, zodat niemand zijn tekst kwijt is.
+      this.melding.set(meldingBijFout(e));
+    } finally {
+      this.bezig.set(false);
+    }
   }
 }

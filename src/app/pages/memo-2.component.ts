@@ -7,6 +7,8 @@ import { AuthService } from '../services/auth.service';
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
 import { parseCsv, headersMatch } from '../utils/csv';
+import { zelfdeEmail } from '../utils/taak-status';
+import { wachtOpOpslag, Melding, MELDING_BEVESTIGD, MELDING_WACHT, meldingBijFout } from '../utils/opslag';
 
 @Component({
   selector: 'app-memo-2',
@@ -28,10 +30,10 @@ import { parseCsv, headersMatch } from '../utils/csv';
           <button type="button" (click)="printPage()" class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 rounded-md border border-slate-300 transition-colors flex items-center gap-1.5 shadow-sm" title="Afdrukken">
             <mat-icon class="text-[16px] w-[16px] h-[16px]">print</mat-icon> <span class="hidden md:inline">Print</span>
           </button>
-          <button type="button" (click)="submitDraft()" class="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md shadow-sm transition-colors ml-2 flex items-center gap-1.5">
+          <button type="button" (click)="submitDraft()" [disabled]="bezig()" class="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-md shadow-sm transition-colors ml-2 flex items-center gap-1.5">
              <mat-icon class="text-[16px] w-[16px] h-[16px]">save</mat-icon> <span class="hidden md:inline">Concept</span>
           </button>
-          <button type="button" (click)="submitFinal()" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition-colors flex items-center gap-1.5">
+          <button type="button" (click)="submitFinal()" [disabled]="bezig()" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm transition-colors flex items-center gap-1.5">
              <mat-icon class="text-[16px] w-[16px] h-[16px]">check_circle</mat-icon> Definitief
           </button>
         </div>
@@ -61,10 +63,18 @@ import { parseCsv, headersMatch } from '../utils/csv';
         </div>
       }
 
-      @if (showSuccess()) {
-        <div class="m-8 mb-0 p-4 bg-emerald-50 text-emerald-800 rounded-lg flex items-center gap-3 border border-emerald-200 animate-in fade-in zoom-in duration-300 print:hidden">
-          <mat-icon>check_circle</mat-icon>
-          <span>Memo is succesvol opgeslagen!</span>
+      @if (melding(); as m) {
+        <div class="m-8 mb-0 p-4 rounded-lg flex items-start gap-3 border animate-in fade-in zoom-in duration-300 print:hidden"
+             [class.bg-emerald-50]="m.soort === 'ok'" [class.text-emerald-800]="m.soort === 'ok'" [class.border-emerald-200]="m.soort === 'ok'"
+             [class.bg-amber-50]="m.soort === 'wacht'" [class.text-amber-900]="m.soort === 'wacht'" [class.border-amber-200]="m.soort === 'wacht'"
+             [class.bg-red-50]="m.soort === 'fout'" [class.text-red-800]="m.soort === 'fout'" [class.border-red-200]="m.soort === 'fout'">
+          <mat-icon [class.text-emerald-500]="m.soort === 'ok'" [class.text-amber-500]="m.soort === 'wacht'" [class.text-red-500]="m.soort === 'fout'">
+            {{ m.soort === 'ok' ? 'check_circle' : m.soort === 'wacht' ? 'cloud_upload' : 'error' }}
+          </mat-icon>
+          <div>
+            <p class="font-bold">{{ m.soort === 'ok' ? 'Opgeslagen' : m.soort === 'wacht' ? 'Nog niet bevestigd' : 'Niet opgeslagen' }}</p>
+            <p class="text-sm">{{ m.tekst }}</p>
+          </div>
         </div>
       }
 
@@ -259,7 +269,7 @@ import { parseCsv, headersMatch } from '../utils/csv';
                </div>
                
                <div class="sm:hidden flex gap-2 print:hidden">
-                 <button type="button" (click)="submitFinal()" class="px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-md shadow-sm transition-colors">Opslaan</button>
+                 <button type="button" (click)="submitFinal()" [disabled]="bezig()" class="px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-md shadow-sm transition-colors">Opslaan</button>
                </div>
              </div>
           </div>
@@ -280,7 +290,8 @@ export class Memo2Component {
   private authService = inject(AuthService);
   private route = inject(ActivatedRoute);
 
-  showSuccess = signal(false);
+  melding = signal<Melding | null>(null);
+  bezig = signal(false);
   today = new Date();
   taakId = signal<string | null>(null);
 
@@ -356,7 +367,7 @@ export class Memo2Component {
     this.csvPreviewData.set(null);
   }
 
-  confirmImport() {
+  async confirmImport() {
     const data = this.csvPreviewData();
     if (!data || this.isLocked()) return;
     
@@ -366,9 +377,11 @@ export class Memo2Component {
     
     let successCount = 0;
 
-    data.forEach(row => {
+    let mislukt = 0;
+
+    for (const row of data) {
       const dbLln = this.dataService.leerlingen().find(l => l.leerlingnummer === row.leerlingnummer && l.schooljaar === schooljaar);
-      if (!dbLln) return;
+      if (!dbLln) continue;
 
       const attentionRaw = row.aandachtspuntenRaw.toLowerCase();
 
@@ -402,15 +415,21 @@ export class Memo2Component {
 
       const existing = this.dataService.memoTW1TW2().find(m => m.schooljaar === schooljaar && m.toetsweek === toetsweek && m.leerlingnummer === dbLln.leerlingnummer && m.vak.toLowerCase() === row.vak.toLowerCase());
 
-      if (existing && existing.id) {
-        this.dataService.updateMemoTW1TW2(existing.id, memoData);
-      } else {
-        this.dataService.addMemoTW1TW2(memoData);
+      try {
+        if (existing && existing.id) {
+          await this.dataService.updateMemoTW1TW2(existing.id, memoData);
+        } else {
+          await this.dataService.addMemoTW1TW2(memoData);
+        }
+        successCount++;
+      } catch {
+        mislukt++;
       }
-      successCount++;
-    });
+    }
 
-    alert(`${successCount} memo's succesvol geïmporteerd en opgeslagen.`);
+    alert(mislukt === 0
+      ? `${successCount} memo's geïmporteerd en opgeslagen.`
+      : `${successCount} memo's opgeslagen, ${mislukt} mislukt. Probeer de mislukte regels opnieuw.`);
     this.csvPreviewData.set(null);
   }
 
@@ -455,7 +474,32 @@ export class Memo2Component {
   filteredDocentVakken = computed(() => {
     const klas = this.formValues().klas;
     if (!klas) return [];
-    return this.dataService.docentVakken().filter(dv => dv.actief && dv.schooljaar === '2026-2027' && dv.klas === klas);
+    const alle = this.dataService.docentVakken().filter(dv => dv.actief && dv.schooljaar === '2026-2027' && dv.klas === klas);
+
+    // Een vakdocent ziet alleen zijn eigen koppelingen. Hij kon eerder elke
+    // collega uit de lijst kiezen en dus een memo op andermans naam schrijven.
+    // Mentor, coordinator en beheerder houden het volledige overzicht.
+    const gebruiker = this.authService.currentUser();
+    if (gebruiker?.role === 'Docent' && gebruiker.email) {
+      const eigen = alle.filter(dv => zelfdeEmail(dv.docentEmail, gebruiker.email));
+      // Geen koppeling gevonden: niet blokkeren, wel uitleggen (zie nietGekoppeld).
+      return eigen.length > 0 ? eigen : alle;
+    }
+    return alle;
+  });
+
+  /**
+   * Waar de docent geen enkele koppeling heeft in deze klas. Dan tonen we de
+   * volledige lijst, maar met een waarschuwing - anders schrijft hij ongemerkt
+   * een memo op naam van een collega.
+   */
+  nietGekoppeld = computed(() => {
+    const gebruiker = this.authService.currentUser();
+    if (gebruiker?.role !== 'Docent' || !gebruiker.email) return false;
+    const klas = this.formValues().klas;
+    if (!klas) return false;
+    return !this.dataService.docentVakken().some(dv =>
+      dv.actief && dv.schooljaar === '2026-2027' && dv.klas === klas && zelfdeEmail(dv.docentEmail, gebruiker.email));
   });
 
   isLocked = computed(() => {
@@ -494,26 +538,26 @@ export class Memo2Component {
       customDocentNaam: '',
       customVak: ''
     });
-    this.showSuccess.set(false);
+    this.melding.set(null);
   }
 
   printPage() {
     window.print();
   }
 
-  submitDraft() {
+  async submitDraft() {
     if (this.isLocked()) return;
     this.form.patchValue({ status: 'Concept' });
-    this.onSubmit();
+    await this.onSubmit();
   }
 
-  submitFinal() {
+  async submitFinal() {
     if (this.isLocked()) return;
     this.form.patchValue({ status: 'Definitief' });
-    this.onSubmit();
+    await this.onSubmit();
   }
 
-  private onSubmit() {
+  private async onSubmit() {
     if (this.isLocked()) return;
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -566,7 +610,8 @@ export class Memo2Component {
       status: val.status as any,
       aangemaaktDoor: this.authService.currentUser()?.email || docentEmail || 'docent@school.nl',
       aangemaaktOp: new Date().toISOString(),
-      gewijzigdOp: new Date().toISOString()
+      gewijzigdOp: new Date().toISOString(),
+      gewijzigdDoor: this.authService.currentUser()?.email || docentEmail || ''
     };
 
     if (val.reflectieOpVorigePeriode) {
@@ -575,34 +620,61 @@ export class Memo2Component {
 
     // Eén memo per leerling/vak/toetsweek/schooljaar: werk een bestaande memo bij
     // in plaats van er een tweede naast te zetten (bijv. eerst Concept, dan Definitief).
+    // De docent hoort in de sleutel. Zonder hem overschreven twee docenten die
+    // hetzelfde vak aan dezelfde leerling geven elkaars memo.
+    const zelfdeDocent = (m: { docentEmail?: string; docentNaam?: string }) =>
+      docentEmail
+        ? zelfdeEmail(m.docentEmail, docentEmail)
+        : (m.docentNaam || '').trim().toLowerCase() === docentNaam.trim().toLowerCase();
+
     const bestaandeMemo = this.dataService.memoTW1TW2().find(m =>
       m.schooljaar === memoData.schooljaar &&
       m.toetsweek === memoData.toetsweek &&
       m.leerlingnummer === memoData.leerlingnummer &&
-      m.vak.toLowerCase() === memoData.vak.toLowerCase()
+      m.vak.toLowerCase() === memoData.vak.toLowerCase() &&
+      zelfdeDocent(m)
     );
 
-    if (bestaandeMemo?.id) {
-      // Aanmaakgegevens van de oorspronkelijke memo behouden.
-      memoData.aangemaaktOp = bestaandeMemo.aangemaaktOp;
-      memoData.aangemaaktDoor = bestaandeMemo.aangemaaktDoor;
-      this.dataService.updateMemoTW1TW2(bestaandeMemo.id, memoData);
-    } else {
-      this.dataService.addMemoTW1TW2(memoData);
-    }
-
-    if (this.taakId()) {
-      const taak = this.dataService.docentTaken().find(t => t.id === this.taakId());
-      if (taak) {
-        this.dataService.saveDocentTaak({
-          ...taak,
-          status: 'Ingevuld',
-          gewijzigdOp: new Date().toISOString()
-        });
+    // Wachten op de opslag voordat we succes melden. Eerder verscheen de groene
+    // melding altijd, ook als de schrijfactie mislukte - de fout verdween dan
+    // ongezien als onafgevangen belofte in de console.
+    this.bezig.set(true);
+    this.melding.set(null);
+    try {
+      if (bestaandeMemo?.id) {
+        // Aanmaakgegevens van de oorspronkelijke memo behouden.
+        memoData.aangemaaktOp = bestaandeMemo.aangemaaktOp;
+        memoData.aangemaaktDoor = bestaandeMemo.aangemaaktDoor;
       }
-    }
 
-    this.showSuccess.set(true);
-    setTimeout(() => this.showSuccess.set(false), 5000);
+      const opslaan = bestaandeMemo?.id
+        ? this.dataService.updateMemoTW1TW2(bestaandeMemo.id, memoData)
+        : this.dataService.addMemoTW1TW2(memoData);
+
+      const uitkomst = await wachtOpOpslag(opslaan);
+
+      if (this.taakId()) {
+        const taak = this.dataService.docentTaken().find(t => t.id === this.taakId());
+        if (taak) {
+          await wachtOpOpslag(this.dataService.saveDocentTaak({
+            ...taak,
+            status: 'Ingevuld',
+            gewijzigdOp: new Date().toISOString()
+          }));
+        }
+      }
+
+      if (uitkomst === 'bevestigd') {
+        this.melding.set(MELDING_BEVESTIGD('Memo'));
+        setTimeout(() => { if (this.melding()?.soort === 'ok') this.melding.set(null); }, 5000);
+      } else {
+        this.melding.set(MELDING_WACHT);
+      }
+    } catch (e) {
+      // De invoer blijft in het formulier staan, zodat niemand zijn tekst kwijt is.
+      this.melding.set(meldingBijFout(e));
+    } finally {
+      this.bezig.set(false);
+    }
   }
 }

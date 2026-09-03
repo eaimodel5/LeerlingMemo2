@@ -2,6 +2,7 @@ import { Component, inject } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { AuthService } from '../services/auth.service';
+import { DataService } from '../services/data.service';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -149,6 +150,13 @@ import { CommonModule } from '@angular/common';
 
       <!-- Main Content Area -->
       <main class="flex-1 flex flex-col bg-slate-50 overflow-hidden text-slate-800">
+        @if (data.verbindingsfout(); as fout) {
+          <div class="bg-red-600 text-white px-6 py-2.5 flex items-center gap-3 text-sm shrink-0 print:hidden">
+            <mat-icon class="text-[18px] w-[18px] h-[18px]">cloud_off</mat-icon>
+            <span class="flex-1">{{ fout }} Wat je nu invult wordt mogelijk niet bewaard.</span>
+            <button (click)="herlaad()" class="underline font-medium hover:no-underline whitespace-nowrap">Opnieuw laden</button>
+          </div>
+        }
         <div class="flex-1 overflow-y-auto overflow-x-hidden">
           <router-outlet></router-outlet>
         </div>
@@ -158,4 +166,9 @@ import { CommonModule } from '@angular/common';
 })
 export class LayoutComponent {
   auth = inject(AuthService);
+  data = inject(DataService);
+
+  herlaad() {
+    if (typeof window !== 'undefined') window.location.reload();
+  }
 }

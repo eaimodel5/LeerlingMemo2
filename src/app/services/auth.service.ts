@@ -8,6 +8,9 @@ import firebaseConfig from '../../../firebase-applet-config.json';
 const app = !getApps().length ? initializeApp(firebaseConfig as any) : getApp();
 const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
+/** Sleutel waaronder de ingelogde gebruiker wordt bewaard. */
+const SLEUTEL = 'leerlingmemo_auth';
+
 export interface AuthUser {
   name: string;
   email: string;
@@ -22,11 +25,33 @@ export class AuthService {
   currentUser = signal<AuthUser | null>(null);
 
   constructor() {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('leerlingmemo_auth');
-      if (saved) {
-        this.currentUser.set(JSON.parse(saved));
-      }
+    if (typeof window === 'undefined') return;
+
+    // sessionStorage is per tabblad, localStorage per browser. Stond de
+    // ingelogde gebruiker alleen in localStorage, dan deelden alle tabbladen
+    // één identiteit: wie het laatst inlogde won, en de andere tabbladen
+    // merkten daar niets van omdat ze hun eigen kopie in het geheugen hielden.
+    // Op een gedeelde computer in de docentenkamer leverde dat memo's op naam
+    // van de verkeerde persoon op.
+    //
+    // Dit tabblad werkt nu met zijn eigen sessie. localStorage blijft alleen in
+    // gebruik als startwaarde, zodat een nieuw tabblad niet opnieuw hoeft in te
+    // loggen.
+    const uitTabblad = sessionStorage.getItem(SLEUTEL);
+    const uitBrowser = localStorage.getItem(SLEUTEL);
+    const opgeslagen = uitTabblad ?? uitBrowser;
+
+    if (!opgeslagen) return;
+
+    try {
+      const gebruiker = JSON.parse(opgeslagen) as AuthUser;
+      this.currentUser.set(gebruiker);
+      // Vastleggen voor dit tabblad, zodat een latere inlog elders hem niet meer wijzigt.
+      sessionStorage.setItem(SLEUTEL, opgeslagen);
+    } catch {
+      // Onleesbare inhoud: opruimen en uitgelogd starten.
+      sessionStorage.removeItem(SLEUTEL);
+      localStorage.removeItem(SLEUTEL);
     }
   }
 
@@ -74,16 +99,21 @@ export class AuthService {
   logout() {
     this.currentUser.set(null);
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('leerlingmemo_auth');
+      sessionStorage.removeItem(SLEUTEL);
+      localStorage.removeItem(SLEUTEL);
     }
     this.router.navigate(['/login']);
   }
 
   private setUser(user: AuthUser) {
     this.currentUser.set(user);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('leerlingmemo_auth', JSON.stringify(user));
-    }
+    if (typeof window === 'undefined') return;
+
+    const opgeslagen = JSON.stringify(user);
+    // Dit tabblad is leidend; de kopie in localStorage dient alleen als
+    // startwaarde voor een volgend tabblad.
+    sessionStorage.setItem(SLEUTEL, opgeslagen);
+    localStorage.setItem(SLEUTEL, opgeslagen);
   }
 
   isLoggedIn(): boolean {

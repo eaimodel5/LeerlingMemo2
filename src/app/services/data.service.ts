@@ -299,6 +299,45 @@ export class DataService {
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'docentTaken'); }
   }
 
+  /**
+   * Zet taken uit voor meerdere leerlingen tegelijk.
+   *
+   * Taken die al bestaan worden overgeslagen in plaats van overschreven: de
+   * knop schreef ze eerder opnieuw weg met status 'Open', waardoor een tweede
+   * klik de voortgang van al afgeronde taken wiste.
+   */
+  async zetTakenUit(nieuweTaken: Omit<DocentTaak, 'id'>[]) {
+    try {
+      const bestaand = new Set(this.docentTaken().map(t =>
+        `${t.leerlingnummer}|${t.docentEmail.trim().toLowerCase()}|${t.periode}|${t.schooljaar}`));
+
+      const teSchrijven = nieuweTaken
+        .filter(taak => !bestaand.has(`${taak.leerlingnummer}|${taak.docentEmail.trim().toLowerCase()}|${taak.periode}|${taak.schooljaar}`))
+        .map(taak => ({ data: taak }));
+
+      await this.bulkSave('docentTaken', teSchrijven);
+      return teSchrijven.length;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'docentTaken');
+      return 0;
+    }
+  }
+
+  /** Legt vast dat er een herinnering is verstuurd, zonder de rest van de taak aan te raken. */
+  async markeerHerinnerd(ids: string[], moment = new Date().toISOString()) {
+    try {
+      const { writeBatch } = await import('firebase/firestore');
+      const BUNDEL = 450;
+      for (let start = 0; start < ids.length; start += BUNDEL) {
+        const batch = writeBatch(db);
+        for (const id of ids.slice(start, start + BUNDEL)) {
+          batch.set(doc(db, 'docentTaken', id), { herinnerdOp: moment }, { merge: true });
+        }
+        await batch.commit();
+      }
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'docentTaken'); }
+  }
+
   async deleteDocentTaak(id: string) {
     try {
       const { deleteDoc } = await import('firebase/firestore');

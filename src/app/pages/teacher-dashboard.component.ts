@@ -5,6 +5,7 @@ import { DataService } from '../services/data.service';
 import { AuthService } from '../services/auth.service';
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
+import { zelfdeEmail, vakSleutel } from '../utils/taak-status';
 
 @Component({
   selector: 'app-teacher-dashboard',
@@ -49,7 +50,15 @@ import { CommonModule } from '@angular/common';
                     </span>
                   </div>
                   <div class="p-4 bg-white flex-1 flex flex-col justify-between gap-4">
-                    <p class="text-xs text-slate-600">Aangevraagd door mentor: <br/><strong>{{taak.mentorEmail}}</strong></p>
+                    <div>
+                      <p class="text-xs text-slate-600">Aangevraagd door mentor: <br/><strong>{{taak.mentorEmail}}</strong></p>
+                      @if (taak.herinnerdOp) {
+                        <p class="text-xs text-amber-700 mt-2 flex items-center gap-1.5">
+                          <mat-icon class="text-[14px] w-[14px] h-[14px]">notifications_active</mat-icon>
+                          Herinnering gestuurd op {{ taak.herinnerdOp | date:'d MMMM' }}
+                        </p>
+                      }
+                    </div>
                     <a [routerLink]="getMemoRoute(taak.periode)" [queryParams]="{ leerling: taak.leerlingnummer, klas: taak.klas, taakId: taak.id }" class="w-full text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-2">
                       <mat-icon class="text-[18px] w-[18px] h-[18px]">edit</mat-icon>
                       Vul memo in
@@ -96,21 +105,45 @@ export class TeacherDashboardComponent {
   myTaken = computed(() => {
     const email = this.auth.currentUser()?.email;
     if (!email) return [];
-    let taken = this.dataService.docentTaken().filter(t => t.docentEmail === email);
-    
+    // Hoofdletterongevoelig: het adres uit de toegangscode en het adres uit
+    // Docenten/Vakken hoeven niet letterlijk hetzelfde geschreven te zijn.
+    let taken = this.dataService.docentTaken().filter(t => zelfdeEmail(t.docentEmail, email));
+
     if (this.filterPeriode() !== 'All') {
       taken = taken.filter(t => t.periode === this.filterPeriode());
     }
     return taken;
   });
 
-  openTaken = computed(() => {
-    return this.myTaken().filter(t => t.status === 'Open').sort((a, b) => a.klas.localeCompare(b.klas));
+  /** Voor welke leerling-vakcombinaties bestaat er al een memo van deze docent? */
+  private ingevuldeSleutels = computed(() => {
+    const sleutels = new Set<string>();
+    for (const memo of this.dataService.memoTW1TW2()) {
+      sleutels.add(vakSleutel(memo.leerlingnummer, memo.vak) + '|' + memo.toetsweek);
+    }
+    for (const memo of this.dataService.memoTW3()) {
+      sleutels.add(vakSleutel(memo.leerlingnummer, memo.vak) + '|TW3');
+    }
+    return sleutels;
   });
 
-  closedTaken = computed(() => {
-    return this.myTaken().filter(t => t.status === 'Ingevuld').sort((a, b) => new Date(b.gewijzigdOp).getTime() - new Date(a.gewijzigdOp).getTime()).slice(0, 10);
-  });
+  /**
+   * Of een taak af is, blijkt uit het bestaan van de memo — niet uit het
+   * statusveld. Dat veld werd alleen bijgewerkt wanneer de docent via de link
+   * hieronder binnenkwam, waardoor een memo die op een andere manier was
+   * ingevuld hier eeuwig als openstaand bleef staan.
+   */
+  private isAf(taak: { leerlingnummer: string; vak: string; periode: string }): boolean {
+    return this.ingevuldeSleutels().has(vakSleutel(taak.leerlingnummer, taak.vak) + '|' + taak.periode);
+  }
+
+  openTaken = computed(() =>
+    this.myTaken().filter(t => !this.isAf(t)).sort((a, b) => a.klas.localeCompare(b.klas, 'nl')));
+
+  closedTaken = computed(() =>
+    this.myTaken().filter(t => this.isAf(t))
+      .sort((a, b) => new Date(b.gewijzigdOp).getTime() - new Date(a.gewijzigdOp).getTime())
+      .slice(0, 10));
 
   getMemoRoute(periode: string): string {
     if (periode === 'TW1') return '/memo-1';

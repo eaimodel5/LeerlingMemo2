@@ -1,0 +1,10 @@
+/* Typecontrole voor de tests op de beveiligingsregels. Die staan buiten src/
+   en vallen dus niet onder tsconfig.app of tsconfig.spec. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./out-tsc/rules",
+    "types": ["node"]
+  },
+  "include": ["test/rules/**/*.ts"]
+}

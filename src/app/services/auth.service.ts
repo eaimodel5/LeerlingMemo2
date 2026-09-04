@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, sessieActief } from './firebase';
 import { InlogFout, INLOG_MELDINGEN, herkenInlogFout, normaliseerCode } from '../utils/inlogfout';
 import { Recht, mag } from './rechten';
+import { isActieveCode } from '../utils/toegangscode';
 
 /** Sleutel waaronder de ingelogde gebruiker wordt bewaard. */
 const SLEUTEL = 'leerlingmemo_auth';
@@ -99,7 +100,7 @@ export class AuthService {
       if (!snap.exists()) return fout('onbekende-code');
 
       const data = snap.data() as AccessCode;
-      if (data.used === true) return fout('code-ingetrokken');
+      if (!isActieveCode(data)) return fout('code-ingetrokken');
 
       const gebruiker: AuthUser = {
         name: data.ownerName,
@@ -183,7 +184,10 @@ export class AuthService {
     try {
       const uid = await this.meldAanBijFirebase();
       const snap = await getDoc(doc(db, 'codes', gebruiker.code));
-      if (!snap.exists() || (snap.data() as AccessCode).used === true) {
+      // Is de code intussen ingetrokken, dan eindigt de sessie hier. De
+      // beveiligingsregels weigeren hem dan toch al; dit zorgt ervoor dat het
+      // scherm dat ook laat zien in plaats van overal lege lijsten te tonen.
+      if (!snap.exists() || !isActieveCode(snap.data() as AccessCode)) {
         await this.logout();
         return;
       }

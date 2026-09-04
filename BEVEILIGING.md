@@ -202,3 +202,65 @@ De aanpassingen in `firestore.rules` gelden pas als je ze publiceert:
 Firebase-console -> Firestore Database -> **Rules** -> inhoud van
 `firestore.rules` erin plakken -> **Publish**. Tot dat moment weigert de
 database nog steeds het verwijderen van een memo door een mentor.
+
+
+---
+
+## Toegangscodes intrekken
+
+Een code was tot nu toe onbeperkt geldig. Er stond wel een veld `used` in het
+model, maar niets zette het ooit op `true`: een code die bij de verkeerde
+persoon terechtkwam kon alleen worden weggegooid, en dan was ook niet meer te
+zien dat hij ooit bestaan had.
+
+Intrekken is nu een omkeerbare handeling met een spoor. In het beheerscherm
+staat per code **Intrekken** en, bij een ingetrokken code, **Activeren**. De
+statuskolom laat zien waar een code staat.
+
+### Wat er gebeurt bij intrekken
+
+`active` gaat op `false` en `gewijzigdOp` wordt gezet. Vanaf dat moment:
+
+- lukt inloggen met die code niet meer -- de inlogpagina meldt "ingetrokken",
+  niet "ongeldig";
+- verliest **ook wie al is ingelogd** zijn toegang. De beveiligingsregels
+  controleren bij elke lees- of schrijfactie of de code achter de sessie nog
+  bestaat en nog actief is, en of de rol in de sessie nog klopt met de rol van
+  die code. Zonder die controle bleef een lopende sessie gewoon doorwerken --
+  het sessiedocument was immers al geschreven.
+
+Dat kost twee documentleesacties per aanvraag (het sessiedocument en het
+code-document). Firestore telt herhaalde toegang tot hetzelfde document binnen
+een aanvraag een keer, dus het blijft ruim onder de limiet van tien.
+
+### Codes van voor deze wijziging
+
+Die hebben het veld `active` niet. Zowel de app als de regels lezen `active !=
+false`, dus zulke codes blijven gewoon werken. Zou het `active == true` zijn,
+dan sluit het publiceren van deze regels iedereen in een klap buiten.
+
+### De laatste beheerderscode
+
+Een beheerderscode kan alleen worden ingetrokken zolang er minstens een andere
+**actieve** beheerderscode overblijft. Anders kan niemand nog codes aanmaken --
+en dat aanmaken is zelf aan de beheerder voorbehouden, dus je komt er dan alleen
+uit door met de hand in de Firebase-console te werken. Het scherm toont bij die
+ene code "Laatste beheerderscode" in plaats van een knop.
+
+### Regels publiceren
+
+De repository bevat nu `firebase.json` en `.firebaserc`, met de naam van de
+database erin -- deze installatie draait niet op `(default)` maar op
+`ai-studio-leerlingmemo2-...`. Een `firebase deploy` zonder die naam publiceert
+naar de standaarddatabase en meldt "success" terwijl er niets verandert.
+
+```bash
+npm i -g firebase-tools   # eenmalig
+firebase login            # eenmalig
+npm run deploy:rules
+```
+
+De CLI staat bewust niet als devDependency in dit project: hij sleept een paar
+duizend regels in de lockfile mee voor iets wat je een paar keer per jaar doet.
+Handmatig plakken in de console mag ook; kies dan bovenin wel dezelfde
+database.

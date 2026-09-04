@@ -3,7 +3,6 @@ rules_version = '2';
 service cloud.firestore {
 match /databases/{database}/documents {
 
-```
 // ---------- HULPFUNCTIES ----------
 
 function isAuthenticated() {
@@ -165,7 +164,6 @@ match /docentTaken/{taakId} {
   allow read: if isAuthorizedUser();
   allow create, update, delete: if isAuthorizedUser();
 }
-```
 
 }
 }

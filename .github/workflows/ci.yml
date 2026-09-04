@@ -1,0 +1,48 @@
+name: Tests
+
+# Draait op elke pull request en op main. De regeltests hebben de
+# Firestore-emulator nodig; die heeft Java en een download nodig, en dat gaat
+# in deze omgeving wel en op de ontwikkelmachine van de bouwer niet altijd.
+# Daarom is dit de plek waar bewezen wordt dat firestore.rules doet wat het
+# zegt.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # De Firestore-emulator is een Java-programma.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Emulator uit de cache halen
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}
+
+      - run: npm ci
+
+      - name: Bouwen
+        run: npx ng build --configuration development
+
+      - name: Unit- en componenttests
+        run: npm run test:ci
+
+      - name: Typecontrole op de regeltests
+        run: npm run typecheck:rules
+
+      - name: Beveiligingsregels tegen de emulator
+        run: npm run test:rules

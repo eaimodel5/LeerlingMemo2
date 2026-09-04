@@ -16,10 +16,17 @@ import {
   zelfdeAfkorting,
 } from '../utils/docent-afkorting';
 
-/** Een docentnaam uit de koppelingen waar nog geen afkorting bij hoort. */
+/**
+ * Een docentnaam uit de bestaande koppelingen waar nog geen afkorting bij hoort.
+ *
+ * `legacyEmail` komt uit die koppelingen en is er alleen om te laten zien om
+ * wie het gaat -- twee collega's kunnen dezelfde achternaam hebben. Hij wordt
+ * niet in /docenten opgeslagen; het adres is juist de sleutel waar we vanaf
+ * willen.
+ */
 export interface OntbrekendeDocent {
   naam: string;
-  email: string;
+  legacyEmail: string;
   aantalKoppelingen: number;
 }
 
@@ -80,11 +87,11 @@ export interface OntbrekendeDocent {
               </p>
             </div>
             <div class="divide-y divide-slate-100 max-h-72 overflow-y-auto">
-              @for (ontbreekt of zonderAfkorting(); track ontbreekt.email + ontbreekt.naam) {
+              @for (ontbreekt of zonderAfkorting(); track ontbreekt.naam + ontbreekt.legacyEmail) {
                 <div class="px-5 py-3 flex items-center justify-between gap-4">
                   <div class="min-w-0">
                     <div class="text-sm font-semibold text-slate-800 truncate">{{ ontbreekt.naam }}</div>
-                    <div class="text-xs text-slate-500 truncate">{{ ontbreekt.email || 'geen e-mailadres' }} · {{ ontbreekt.aantalKoppelingen }} {{ ontbreekt.aantalKoppelingen === 1 ? 'koppeling' : 'koppelingen' }}</div>
+                    <div class="text-xs text-slate-500 truncate">{{ ontbreekt.legacyEmail || 'geen e-mailadres' }} · {{ ontbreekt.aantalKoppelingen }} {{ ontbreekt.aantalKoppelingen === 1 ? 'koppeling' : 'koppelingen' }}</div>
                   </div>
                   <button (click)="nieuwVoor(ontbreekt)" class="shrink-0 px-2.5 py-1 text-xs font-medium text-amber-800 bg-white hover:bg-amber-50 border border-amber-300 rounded transition-colors">
                     Afkorting toevoegen
@@ -113,7 +120,6 @@ export interface OntbrekendeDocent {
               <tr>
                 <th class="px-6 py-3">Afkorting</th>
                 <th class="px-6 py-3">Naam</th>
-                <th class="px-6 py-3">E-mail (tijdelijk)</th>
                 <th class="px-6 py-3">Status</th>
                 <th class="px-6 py-3 text-right">Acties</th>
               </tr>
@@ -123,7 +129,6 @@ export interface OntbrekendeDocent {
                 <tr class="hover:bg-slate-50 transition-colors" [class.opacity-60]="!docent.actief">
                   <td class="px-6 py-3 font-mono font-bold text-[#e87700]">{{ toon(docent.afkorting) }}</td>
                   <td class="px-6 py-3 font-semibold text-slate-800">{{ docent.naam }}</td>
-                  <td class="px-6 py-3 text-xs text-slate-500">{{ docent.email || '—' }}</td>
                   <td class="px-6 py-3">
                     @if (docent.actief) {
                       <span class="px-2 py-1 rounded text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">Actief</span>
@@ -144,7 +149,7 @@ export interface OntbrekendeDocent {
                 </tr>
               } @empty {
                 <tr>
-                  <td colspan="5" class="px-6 py-16 text-center text-slate-400 italic">
+                  <td colspan="4" class="px-6 py-16 text-center text-slate-400 italic">
                     @if (docenten().length === 0) {
                       Nog geen docenten. Voeg ze los toe, of importeer een CSV met afkorting en naam.
                     } @else {
@@ -181,10 +186,6 @@ export interface OntbrekendeDocent {
             <input id="veld-naam" [ngModel]="f.naam" (ngModelChange)="zetVeld('naam', $event)" placeholder="Hans Visser"
                    class="w-full px-3 py-2 mb-3 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
 
-            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="veld-email">E-mail <span class="normal-case font-normal text-slate-400">(tijdelijk, om bestaande gegevens te herkennen)</span></label>
-            <input id="veld-email" [ngModel]="f.email" (ngModelChange)="zetVeld('email', $event)" placeholder="visser@school.nl"
-                   class="w-full px-3 py-2 mb-3 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
-
             <label class="flex items-center gap-2 text-sm text-slate-700 mb-5">
               <input type="checkbox" [ngModel]="f.actief" (ngModelChange)="zetVeld('actief', $event)" class="rounded border-slate-300">
               Actief
@@ -212,7 +213,7 @@ export class ManageDocentenComponent {
   zoek = signal('');
   toonInactief = signal(false);
 
-  formulier = signal<{ afkorting: string; naam: string; email: string; actief: boolean; bestaand: boolean } | null>(null);
+  formulier = signal<{ afkorting: string; naam: string; actief: boolean; bestaand: boolean } | null>(null);
 
   magVerwijderen = computed(() => this.authService.mag('leerlingenVerwijderen'));
 
@@ -244,15 +245,15 @@ export class ManageDocentenComponent {
       const naam = (koppeling.docentNaam ?? '').trim();
       if (!naam && !email) continue;
 
-      const alBekend = bekend.some(
-        d =>
-          (email !== '' && (d.email ?? '').trim().toLowerCase() === email.toLowerCase()) ||
-          d.naam.trim().toLowerCase() === naam.toLowerCase(),
-      );
+      // Vergelijken op naam. Het e-mailadres uit de koppeling wordt hier alleen
+      // getoond zodat de beheerder weet om wie het gaat; het staat niet in
+      // /docenten en is dus geen vergelijkingsgrond.
+      const alBekend = bekend.some(d => d.naam.trim().toLowerCase() === naam.toLowerCase());
       if (alBekend) continue;
 
-      const sleutel = (email || naam).toLowerCase();
-      const bestaand = perDocent.get(sleutel) ?? { naam, email, aantalKoppelingen: 0 };
+      // Groeperen op naam, dezelfde grond waarop hierboven wordt vergeleken.
+      const sleutel = (naam || email).toLowerCase();
+      const bestaand = perDocent.get(sleutel) ?? { naam, legacyEmail: email, aantalKoppelingen: 0 };
       bestaand.aantalKoppelingen += 1;
       perDocent.set(sleutel, bestaand);
     }
@@ -282,26 +283,31 @@ export class ManageDocentenComponent {
     return uitlegBijAfkortingFout(fout);
   }
 
-  zetVeld(veld: 'afkorting' | 'naam' | 'email' | 'actief', waarde: string | boolean) {
+  zetVeld(veld: 'afkorting' | 'naam' | 'actief', waarde: string | boolean) {
     const f = this.formulier();
     if (!f) return;
     this.formulier.set({ ...f, [veld]: waarde });
   }
 
   nieuw() {
-    this.formulier.set({ afkorting: '', naam: '', email: '', actief: true, bestaand: false });
+    this.formulier.set({ afkorting: '', naam: '', actief: true, bestaand: false });
   }
 
-  /** Nieuw formulier, voorgevuld met wat we uit de koppeling weten — behalve de afkorting. */
+  /**
+   * Nieuw formulier, voorgevuld met de naam uit de koppeling.
+   *
+   * De afkorting niet: die valt niet uit een naam af te leiden. Het e-mailadres
+   * evenmin -- dat blijft waar het staat, in de legacygegevens, en komt niet in
+   * het nieuwe docentrecord terecht.
+   */
   nieuwVoor(ontbreekt: OntbrekendeDocent) {
-    this.formulier.set({ afkorting: '', naam: ontbreekt.naam, email: ontbreekt.email, actief: true, bestaand: false });
+    this.formulier.set({ afkorting: '', naam: ontbreekt.naam, actief: true, bestaand: false });
   }
 
   bewerk(docent: Docent) {
     this.formulier.set({
       afkorting: docent.afkorting,
       naam: docent.naam,
-      email: docent.email ?? '',
       actief: docent.actief,
       bestaand: true,
     });
@@ -319,7 +325,6 @@ export class ManageDocentenComponent {
       await this.dataService.saveDocent({
         afkorting,
         naam: f.naam.trim(),
-        email: f.email.trim() || undefined,
         actief: f.actief,
         aangemaaktOp: bestaand?.aangemaaktOp,
       });
@@ -346,15 +351,15 @@ export class ManageDocentenComponent {
 
   downloadSjabloon() {
     downloadCsv('docenten_sjabloon.csv', [
-      ['afkorting', 'naam', 'email', 'actief'],
-      ['vis', 'Hans Visser', 'visser@school.nl', 'ja'],
+      ['afkorting', 'naam', 'actief'],
+      ['vis', 'Hans Visser', 'ja'],
     ]);
   }
 
   downloadLijst() {
     downloadCsv('docenten.csv', [
-      ['afkorting', 'naam', 'email', 'actief'],
-      ...this.docenten().map(d => [d.afkorting, d.naam, d.email ?? '', d.actief ? 'ja' : 'nee']),
+      ['afkorting', 'naam', 'actief'],
+      ...this.docenten().map(d => [d.afkorting, d.naam, d.actief ? 'ja' : 'nee']),
     ]);
   }
 
@@ -389,7 +394,6 @@ export class ManageDocentenComponent {
     const kolom = (naam: string) => koppen.indexOf(naam);
     const kAfkorting = kolom('afkorting');
     const kNaam = kolom('naam');
-    const kEmail = kolom('email');
     const kActief = kolom('actief');
 
     if (kAfkorting === -1 || kNaam === -1) {
@@ -416,10 +420,11 @@ export class ManageDocentenComponent {
       }
 
       const actiefTekst = (rij[kActief] ?? '').trim().toLowerCase();
+      // Een kolom `email` in het bestand wordt bewust genegeerd: het adres is
+      // juist de sleutel waar we vanaf willen.
       teSchrijven.push({
         afkorting,
         naam,
-        email: kEmail === -1 ? undefined : (rij[kEmail] ?? '').trim() || undefined,
         actief: actiefTekst === '' ? true : ['ja', 'true', '1', 'actief'].includes(actiefTekst),
       });
     }

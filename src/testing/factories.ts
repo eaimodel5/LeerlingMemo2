@@ -57,7 +57,6 @@ export function maakDocent(over: Partial<Docent> = {}): Docent {
   return {
     afkorting: 'vis',
     naam: DOCENT.naam,
-    email: DOCENT.email,
     actief: true,
     aangemaaktOp: NU,
     gewijzigdOp: NU,

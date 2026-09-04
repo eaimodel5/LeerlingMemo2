@@ -80,21 +80,18 @@ export interface DocentTaak {
  * vinden, en kan hij niet twee keer bestaan doordat iemand zijn naam anders
  * spelt.
  *
- * Nieuw en voorlopig los van de rest: de bestaande koppelingen, memo's en taken
- * blijven docentEmail gebruiken tot die in een latere stap zijn overgezet. Deze
- * lijst is er alvast, zodat de afkortingen bekend kunnen zijn voordat er iets
- * migreert.
+ * **Hier staat met opzet geen e-mailadres in.** Het adres is precies de sleutel
+ * waar we vanaf willen; hem in het nieuwe model overnemen zou dat uitstellen en
+ * een tweede plek opleveren waar hij kan gaan afwijken. De bestaande
+ * koppelingen, memo's en taken houden hun docentEmail tot die in een latere
+ * stap zijn overgezet, en bij die overzetting koppelt de beheerder een
+ * legacydocent zelf aan een afkorting.
  */
 export interface Docent {
   /** Document-ID en sleutel. Kleine letters, letters en cijfers, geen spaties. */
   afkorting: string;
   naam: string;
   actief: boolean;
-  /**
-   * Alleen om de overstap mogelijk te maken: hiermee is een bestaande
-   * docentEmail aan een afkorting te koppelen. Verdwijnt zodra dat gebeurd is.
-   */
-  email?: string;
   aangemaaktOp?: string;
   gewijzigdOp?: string;
 }

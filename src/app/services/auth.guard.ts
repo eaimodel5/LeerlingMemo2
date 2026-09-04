@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { Router, CanActivateFn } from '@angular/router';
 import { AuthService } from './auth.service';
+import { Recht } from './rechten';
 
 export const authGuard: CanActivateFn = () => {
   const authService = inject(AuthService);
@@ -14,27 +15,35 @@ export const authGuard: CanActivateFn = () => {
   return false;
 };
 
-export const superuserGuard: CanActivateFn = () => {
-  const authService = inject(AuthService);
-  const router = inject(Router);
+/**
+ * Laat alleen door wie het genoemde recht heeft.
+ *
+ * Vervangt de losse rolcontroles in de guards. Die vergeleken een rol
+ * rechtstreeks, waardoor de routetabel en `firestore.rules` los van elkaar
+ * konden verschuiven — en dat gebeurde ook: vier mentorschermen stonden op
+ * `authGuard`, die alleen kijkt óf je bent ingelogd en niet wát je bent. Ze
+ * waren daarmee via de URL te openen door een vakdocent, met alle memo's van de
+ * hele school erin.
+ */
+export function rechtGuard(recht: Recht): CanActivateFn {
+  return () => {
+    const authService = inject(AuthService);
+    const router = inject(Router);
 
-  if (authService.hasRole('Superuser')) {
-    return true;
-  }
+    if (!authService.isLoggedIn()) {
+      router.navigate(['/login']);
+      return false;
+    }
 
-  router.navigate(['/']);
-  return false;
-};
+    if (authService.mag(recht)) {
+      return true;
+    }
 
-export const mentorOrHigherGuard: CanActivateFn = () => {
-  const authService = inject(AuthService);
-  const router = inject(Router);
+    router.navigate(['/']);
+    return false;
+  };
+}
 
-  if (authService.hasRole('Mentor') || authService.hasRole('Coordinator') || authService.hasRole('Superuser')) {
-    return true;
-  }
+export const superuserGuard: CanActivateFn = rechtGuard('systeembeheer');
 
-  router.navigate(['/']);
-  return false;
-};
-
+export const mentorOrHigherGuard: CanActivateFn = rechtGuard('voorbereidingBewerken');

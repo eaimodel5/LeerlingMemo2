@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DataService } from '../services/data.service';
+import { AuthService } from '../services/auth.service';
 import { Leerling } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
@@ -32,9 +33,11 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
           <button (click)="downloadTemplate()" class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <mat-icon class="text-[16px] w-[16px] h-[16px]">download</mat-icon> Template
           </button>
-          <button (click)="deleteAllStudents()" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-white hover:bg-red-50 border border-red-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5 whitespace-nowrap" title="Wis alle leerlingen">
-            <mat-icon class="text-[16px] w-[16px] h-[16px]">delete_sweep</mat-icon> Wis Lijst
-          </button>
+          @if (magVerwijderen()) {
+            <button (click)="deleteAllStudents()" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-white hover:bg-red-50 border border-red-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5 whitespace-nowrap" title="Wis alle leerlingen">
+              <mat-icon class="text-[16px] w-[16px] h-[16px]">delete_sweep</mat-icon> Wis Lijst
+            </button>
+          }
           <button (click)="openForm()" class="px-3 py-1.5 text-xs font-medium text-white bg-[#0d1e3a] hover:bg-[#1b3054] rounded-md shadow-sm transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <mat-icon class="text-[16px] w-[16px] h-[16px]">add</mat-icon> Nieuw
           </button>
@@ -95,9 +98,11 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
                     <button (click)="edit(l)" class="text-blue-600 hover:text-blue-800 transition-colors ml-2 mr-2" title="Bewerk">
                       <mat-icon class="text-[20px] w-[20px] h-[20px]">edit</mat-icon>
                     </button>
-                    <button (click)="deleteItem(l)" class="text-red-500 hover:text-red-700 transition-colors ml-1" title="Verwijder">
-                      <mat-icon class="text-[20px] w-[20px] h-[20px]">delete</mat-icon>
-                    </button>
+                    @if (magVerwijderen()) {
+                      <button (click)="deleteItem(l)" class="text-red-500 hover:text-red-700 transition-colors ml-1" title="Verwijder">
+                        <mat-icon class="text-[20px] w-[20px] h-[20px]">delete</mat-icon>
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -189,6 +194,14 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
 })
 export class ManageStudentsComponent {
   private dataService = inject(DataService);
+  private authService = inject(AuthService);
+
+  /**
+   * Een mentor mag leerlingen toevoegen en bijwerken — dat is wat het koppelen
+   * van docenten en de mentor aan een leerling vraagt. Verwijderen blijft bij de
+   * coordinator: dat is onomkeerbaar en neemt de memo's mee.
+   */
+  magVerwijderen = computed(() => this.authService.mag('leerlingenVerwijderen'));
   private fb = inject(FormBuilder);
 
   searchQuery = signal('');

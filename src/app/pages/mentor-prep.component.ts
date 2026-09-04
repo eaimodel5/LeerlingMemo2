@@ -241,9 +241,11 @@ export type DocentMemo = MemoTW1TW2 | MemoTW3;
                               <mat-icon class="text-[16px] w-[16px] h-[16px]">edit</mat-icon>
                               <span>Aanpassen</span>
                             </button>
-                            <button type="button" (click)="deleteDocentMemo(m)" class="px-1.5 py-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Memo verwijderen">
-                              <mat-icon class="text-[16px] w-[16px] h-[16px]">delete</mat-icon>
-                            </button>
+                            @if (magVerwijderen()) {
+                              <button type="button" (click)="deleteDocentMemo(m)" class="px-1.5 py-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Memo verwijderen">
+                                <mat-icon class="text-[16px] w-[16px] h-[16px]">delete</mat-icon>
+                              </button>
+                            }
                           </div>
                         </div>
                       </div>
@@ -555,6 +557,13 @@ export class MentorPrepComponent {
   private fb = inject(FormBuilder);
   private dataService = inject(DataService);
   private authService = inject(AuthService);
+
+  /**
+   * Een memo verwijderen mag vanaf mentor. Stond hier eerder zonder controle,
+   * terwijl `firestore.rules` het weigerde voor een vakdocent: de knop was
+   * zichtbaar, de klik leverde een foutmelding op.
+   */
+  magVerwijderen = computed(() => this.authService.mag('memoVerwijderen'));
 
   melding = signal<Melding | null>(null);
   bezig = signal(false);

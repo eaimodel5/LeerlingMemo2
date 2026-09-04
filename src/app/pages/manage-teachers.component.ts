@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DataService } from '../services/data.service';
+import { AuthService } from '../services/auth.service';
 import { DocentVak } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
@@ -31,9 +32,11 @@ import { parseCsv, downloadCsv } from '../utils/csv';
           <button (click)="downloadTemplate()" class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <mat-icon class="text-[16px] w-[16px] h-[16px]">download</mat-icon> Template
           </button>
-          <button (click)="deleteAllTeachers()" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-white hover:bg-red-50 border border-red-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5 whitespace-nowrap" title="Wis alle docenten">
-            <mat-icon class="text-[16px] w-[16px] h-[16px]">delete_sweep</mat-icon> Wis Lijst
-          </button>
+          @if (magLijstWissen()) {
+            <button (click)="deleteAllTeachers()" class="px-3 py-1.5 text-xs font-medium text-red-600 bg-white hover:bg-red-50 border border-red-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5 whitespace-nowrap" title="Wis alle docenten">
+              <mat-icon class="text-[16px] w-[16px] h-[16px]">delete_sweep</mat-icon> Wis Lijst
+            </button>
+          }
           <button (click)="openForm()" class="px-3 py-1.5 text-xs font-medium text-white bg-[#0d1e3a] hover:bg-[#1b3054] rounded-md shadow-sm transition-colors flex items-center gap-1.5 whitespace-nowrap">
             <mat-icon class="text-[16px] w-[16px] h-[16px]">add</mat-icon> Nieuw
           </button>
@@ -165,6 +168,10 @@ import { parseCsv, downloadCsv } from '../utils/csv';
 })
 export class ManageTeachersComponent {
   private dataService = inject(DataService);
+  private authService = inject(AuthService);
+
+  /** De hele docentenlijst wissen blijft bij de coordinator. */
+  magLijstWissen = computed(() => this.authService.mag('docentenlijstWissen'));
   private fb = inject(FormBuilder);
 
   searchQuery = signal('');

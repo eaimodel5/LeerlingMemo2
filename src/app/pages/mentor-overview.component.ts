@@ -1,6 +1,7 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DataService } from '../services/data.service';
+import { AuthService } from '../services/auth.service';
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
 import { DocentTaak } from '../models/data.models';
@@ -15,7 +16,7 @@ import { bepaalStatus, vakSleutel, TaakStatus, STATUS_KLEUR, STATUS_ICOON, STATU
       <header class="h-16 bg-white border-b border-slate-200 px-8 flex flex-none items-center justify-between sticky top-0 z-10 print:hidden hidden sm:flex">
         <h2 class="text-lg font-semibold text-slate-700">Mentoroverzicht</h2>
         <div class="flex gap-2">
-          @if (klas() && periode()) {
+          @if (klas() && periode() && magVergrendelen()) {
             <button (click)="toggleClassLock()" [class]="isClassLocked() ? 'bg-white text-red-700 hover:bg-red-50 border-red-200' : 'bg-white text-emerald-700 hover:bg-emerald-50 border-emerald-200'" class="px-3 py-1.5 text-xs font-medium rounded-md border transition-all flex items-center gap-1.5 shadow-sm">
               <mat-icon class="text-[16px] w-[16px] h-[16px]">{{ isClassLocked() ? 'lock' : 'lock_open' }}</mat-icon>
               {{ isClassLocked() ? 'Gesloten' : 'Sluit Invoer' }}
@@ -27,6 +28,16 @@ import { bepaalStatus, vakSleutel, TaakStatus, STATUS_KLEUR, STATUS_ICOON, STATU
           </button>
         </div>
       </header>
+
+      @if (vergrendelFout(); as fout) {
+        <div class="mx-4 sm:mx-8 mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs flex items-start gap-2 print:hidden">
+          <mat-icon class="text-[16px] w-[16px] h-[16px] mt-0.5">error</mat-icon>
+          <span class="flex-1">{{ fout }}</span>
+          <button type="button" (click)="vergrendelFout.set(null)" class="text-red-400 hover:text-red-600" title="Sluiten">
+            <mat-icon class="text-[16px] w-[16px] h-[16px]">close</mat-icon>
+          </button>
+        </div>
+      }
 
       <!-- Print View Header -->
       <div class="hidden print:block p-8 border-b-2 border-slate-800 mb-8">
@@ -310,6 +321,13 @@ import { bepaalStatus, vakSleutel, TaakStatus, STATUS_KLEUR, STATUS_ICOON, STATU
 })
 export class MentorOverviewComponent {
   private dataService = inject(DataService);
+  private authService = inject(AuthService);
+
+  /** Vergrendelen mag vanaf mentor; een vakdocent kreeg hier een foutmelding. */
+  magVergrendelen = computed(() => this.authService.mag('klasVergrendelen'));
+
+  /** Zichtbaar als het slot niet weggeschreven kon worden. */
+  vergrendelFout = signal<string | null>(null);
 
   schooljaar = signal('2026-2027');
   periode = signal('TW1');
@@ -582,7 +600,12 @@ export class MentorOverviewComponent {
       }
     }
     
-    this.dataService.toggleLock(this.klas(), p, this.schooljaar(), newState);
+    // Deed dit eerder zonder await en zonder catch: mislukte de schrijfactie,
+    // dan bleef het slotje gewoon staan alsof er niets aan de hand was.
+    this.dataService.toggleLock(this.klas(), p, this.schooljaar(), newState)
+      .catch((e: unknown) => {
+        this.vergrendelFout.set(e instanceof Error ? e.message : 'De klas kon niet worden vergrendeld.');
+      });
   }
 
   getTW12(memo: any): any {

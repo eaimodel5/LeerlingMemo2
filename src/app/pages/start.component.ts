@@ -23,7 +23,18 @@ import { AuthService } from '../services/auth.service';
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           
           <!-- Vakdocenten -->
-          @if (!auth.isLoggedIn() || auth.hasRole('Docent') || auth.hasRole('Superuser')) {
+          @if (!auth.isLoggedIn()) {
+            <div class="col-span-full bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
+              <mat-icon class="text-slate-300 text-4xl mb-2">lock</mat-icon>
+              <h3 class="text-sm font-bold text-slate-800 mb-1">Je bent niet ingelogd</h3>
+              <p class="text-xs text-slate-500 mb-4">Log in met de toegangscode die je van je leerlingcoordinator hebt gekregen.</p>
+              <a routerLink="/login" class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-[#0d1e3a] hover:bg-[#1b3054] rounded-md shadow-sm transition-colors">
+                <mat-icon class="text-[16px] w-[16px] h-[16px]">login</mat-icon> Inloggen
+              </a>
+            </div>
+          }
+
+          @if (auth.hasRole('Docent') || auth.hasRole('Superuser')) {
             <div class="col-span-full border-b border-slate-200 pb-2 flex items-center gap-2">
               <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide">Voor Vakdocenten</h3>
             </div>
@@ -54,7 +65,7 @@ import { AuthService } from '../services/auth.service';
           }
 
           <!-- Mentoren -->
-          @if (auth.hasRole('Mentor') || auth.hasRole('Coordinator') || auth.hasRole('Superuser')) {
+          @if (auth.mag('voorbereidingBewerken')) {
             <div class="col-span-full border-b border-slate-200 pb-2 mt-6 flex items-center gap-2">
               <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide">Voor Mentoren</h3>
             </div>
@@ -93,9 +104,12 @@ import { AuthService } from '../services/auth.service';
           }
 
           <!-- Beheer -->
-          @if (auth.hasRole('Superuser')) {
+          <!-- Leerlingen en docentkoppelingen: mentorwerk, geen beheerderswerk.
+               Stonden hier onder "Voor Beheerders" terwijl het menu ze al bij de
+               mentoren zette; dat verschil verwarde meer dan het hielp. -->
+          @if (auth.mag('leerlingenBewerken')) {
             <div class="col-span-full border-b border-slate-200 pb-2 mt-6 flex items-center gap-2">
-              <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide">Voor Beheerders</h3>
+              <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide">Gegevens beheren</h3>
             </div>
 
             <a routerLink="/manage-students" class="group flex flex-col p-6 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-slate-400 hover:shadow-md hover:-translate-y-1 transition-all duration-200">
@@ -112,6 +126,21 @@ import { AuthService } from '../services/auth.service';
               </div>
               <h4 class="text-sm font-bold text-slate-800 mb-1">Docenten & Vakken</h4>
               <p class="text-xs text-slate-500 leading-relaxed max-w-[200px]">Koppel docenten/vakken aan klassen.</p>
+            </a>
+
+          }
+
+          @if (auth.mag('systeembeheer')) {
+            <div class="col-span-full border-b border-slate-200 pb-2 mt-6 flex items-center gap-2">
+              <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide">Systeembeheer</h3>
+            </div>
+
+            <a routerLink="/beheer" class="group flex flex-col p-6 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-purple-300 hover:shadow-md hover:-translate-y-1 transition-all duration-200">
+              <div class="h-12 w-12 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center mb-4 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                <mat-icon>dashboard</mat-icon>
+              </div>
+              <h4 class="text-sm font-bold text-slate-800 mb-1">Overzicht</h4>
+              <p class="text-xs text-slate-500 leading-relaxed max-w-[200px]">Voortgang per klas, en signalen over ontbrekende koppelingen.</p>
             </a>
 
             <a routerLink="/superuser" class="group flex flex-col p-6 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-purple-300 hover:shadow-md hover:-translate-y-1 transition-all duration-200">

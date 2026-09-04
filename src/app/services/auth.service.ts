@@ -5,6 +5,7 @@ import { signInAnonymously } from 'firebase/auth';
 import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, sessieActief } from './firebase';
 import { InlogFout, INLOG_MELDINGEN, herkenInlogFout, normaliseerCode } from '../utils/inlogfout';
+import { Recht, mag } from './rechten';
 
 /** Sleutel waaronder de ingelogde gebruiker wordt bewaard. */
 const SLEUTEL = 'leerlingmemo_auth';
@@ -227,5 +228,18 @@ export class AuthService {
 
   hasRole(role: UserRole): boolean {
     return this.currentUser()?.role === role;
+  }
+
+  /**
+   * Mag de ingelogde gebruiker dit?
+   *
+   * Gebruik dit in plaats van `hasRole(...)` zodra het om een handeling gaat.
+   * `hasRole` vergelijkt exact één rol en kent geen volgorde, dus een controle
+   * op `'Mentor'` sloot een coördinator per ongeluk uit — en drie schermen
+   * verderop stond dezelfde grens net even anders opgeschreven. Zie
+   * `rechten.ts`; die lijst hoort gelijk te zijn aan `firestore.rules`.
+   */
+  mag(recht: Recht): boolean {
+    return mag(this.currentUser()?.role, recht);
   }
 }

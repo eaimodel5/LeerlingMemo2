@@ -2,6 +2,7 @@ import { Injectable, effect, signal } from '@angular/core';
 import { Leerling, DocentVak, MemoTW1TW2, MemoTW3, MentorVoorbereiding, Voortgangsplan, ClassLock, DocentTaak } from '../models/data.models';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { auth, db, sessieActief } from './firebase';
+import { Luisteraars, Stopper } from '../utils/luisteraars';
 
 enum OperationType {
   CREATE = 'create',
@@ -101,51 +102,90 @@ export class DataService {
    */
   verbindingsfout = signal<string | null>(null);
 
-  /** Voorkomt dat de luisteraars twee keer worden opgezet na opnieuw inloggen. */
-  private gestart = false;
+  private luisteraars = new Luisteraars();
 
   constructor() {
     // Tijdens het voorrenderen bestaat er geen sessie en valt er niets te
     // luisteren; de schermen halen hun gegevens toch pas in de browser op.
     if (typeof window === 'undefined') return;
 
-    // Wachten tot AuthService het sessiedocument in Firestore heeft staan.
-    // Startten de luisteraars meteen bij het opstarten van de app, dan
-    // weigerden de beveiligingsregels alle acht en bleef elk scherm leeg — ook
-    // na een geslaagde inlog, want een luisteraar die is afgebroken komt niet
-    // vanzelf terug.
+    // De luisteraars volgen de sessie: aan zodra AuthService het
+    // sessiedocument in Firestore heeft staan, uit zodra dat verdwijnt.
+    //
+    // Startten ze meteen bij het opstarten van de app, dan weigerden de
+    // beveiligingsregels alle acht en bleef elk scherm leeg. Bleven ze ná het
+    // uitloggen aanstaan, dan kregen ze prompt 'permission-denied' omdat hun
+    // eigen sessiedocument net was verwijderd -- en kwamen ze bij een volgende
+    // inlog niet meer terug.
     effect(() => {
-      if (!sessieActief() || this.gestart) return;
-      this.gestart = true;
-      this.initData();
+      if (sessieActief()) this.startListeners();
+      else this.stopListeners();
     });
   }
 
-  private initData() {
-    onSnapshot(collection(db, 'leerlingen'), (snapshot) => {
-      this.leerlingen.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Leerling)));
-    }, (error) => this.meldVerbindingsprobleem(error, 'leerlingen'));
-    onSnapshot(collection(db, 'docentenVakken'), (snapshot) => {
-      this.docentVakken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentVak)));
-    }, (error) => this.meldVerbindingsprobleem(error, 'docentenVakken'));
-    onSnapshot(collection(db, 'memoTW1TW2'), (snapshot) => {
-      this.memoTW1TW2.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MemoTW1TW2)));
-    }, (error) => this.meldVerbindingsprobleem(error, 'memoTW1TW2'));
-    onSnapshot(collection(db, 'memoTW3'), (snapshot) => {
-      this.memoTW3.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MemoTW3)));
-    }, (error) => this.meldVerbindingsprobleem(error, 'memoTW3'));
-    onSnapshot(collection(db, 'mentorVoorbereiding'), (snapshot) => {
-      this.mentorVoorbereiding.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MentorVoorbereiding)));
-    }, (error) => this.meldVerbindingsprobleem(error, 'mentorVoorbereiding'));
-    onSnapshot(collection(db, 'voortgangsplan'), (snapshot) => {
-      this.voortgangsplan.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Voortgangsplan)));
-    }, (error) => this.meldVerbindingsprobleem(error, 'voortgangsplan'));
-    onSnapshot(collection(db, 'classLocks'), (snapshot) => {
-      this.classLocks.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as ClassLock)));
-    }, (error) => this.meldVerbindingsprobleem(error, 'classLocks'));
-    onSnapshot(collection(db, 'docentTaken'), (snapshot) => {
-      this.docentTaken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentTaak)));
-    }, (error) => this.meldVerbindingsprobleem(error, 'docentTaken'));
+  /**
+   * Zet de acht luisteraars op. Doet niets als ze al aanstaan.
+   *
+   * Openbaar zodat een scherm ze na een storing opnieuw kan aanzetten zonder de
+   * pagina te herladen.
+   */
+  startListeners() {
+    const gestart = this.luisteraars.start(() => this.maakLuisteraars());
+    if (gestart) this.verbindingsfout.set(null);
+  }
+
+  /** Stopt de luisteraars en wist wat er van de vorige gebruiker in beeld stond. */
+  stopListeners() {
+    const liepen = this.luisteraars.stop();
+    if (liepen > 0) this.clearData();
+  }
+
+  /**
+   * Leegt alle signals en de verbindingsmelding.
+   *
+   * Zonder dit bleven na het uitloggen de leerlingen en memo's van de vorige
+   * gebruiker in het geheugen staan. Logde er in hetzelfde tabblad iemand
+   * anders in, dan zag die eerst nog even andermans gegevens.
+   */
+  clearData() {
+    this.leerlingen.set([]);
+    this.docentVakken.set([]);
+    this.memoTW1TW2.set([]);
+    this.memoTW3.set([]);
+    this.mentorVoorbereiding.set([]);
+    this.voortgangsplan.set([]);
+    this.classLocks.set([]);
+    this.docentTaken.set([]);
+    this.verbindingsfout.set(null);
+  }
+
+  private maakLuisteraars(): Stopper[] {
+    return [
+      onSnapshot(collection(db, 'leerlingen'), (snapshot) => {
+        this.leerlingen.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Leerling)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'leerlingen')),
+      onSnapshot(collection(db, 'docentenVakken'), (snapshot) => {
+        this.docentVakken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentVak)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'docentenVakken')),
+      onSnapshot(collection(db, 'memoTW1TW2'), (snapshot) => {
+        this.memoTW1TW2.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MemoTW1TW2)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'memoTW1TW2')),
+      onSnapshot(collection(db, 'memoTW3'), (snapshot) => {
+        this.memoTW3.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MemoTW3)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'memoTW3')),
+      onSnapshot(collection(db, 'mentorVoorbereiding'), (snapshot) => {
+        this.mentorVoorbereiding.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MentorVoorbereiding)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'mentorVoorbereiding')),
+      onSnapshot(collection(db, 'voortgangsplan'), (snapshot) => {
+        this.voortgangsplan.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Voortgangsplan)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'voortgangsplan')),
+      onSnapshot(collection(db, 'classLocks'), (snapshot) => {
+        this.classLocks.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as ClassLock)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'classLocks')),
+      onSnapshot(collection(db, 'docentTaken'), (snapshot) => {
+        this.docentTaken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentTaak)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'docentTaken')),
+    ];
   }
 
   /** Zet de verbindingsfout klaar voor het scherm in plaats van te gooien. */

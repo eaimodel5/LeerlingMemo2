@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, sessieActief } from './firebase';
 import { InlogFout, INLOG_MELDINGEN, herkenInlogFout, normaliseerCode } from '../utils/inlogfout';
 import { Recht, mag } from './rechten';
+import { DataService } from './data.service';
 import { isActieveCode } from '../utils/toegangscode';
 
 /** Sleutel waaronder de ingelogde gebruiker wordt bewaard. */
@@ -28,6 +29,7 @@ function fout(reden: InlogFout): InlogResultaat {
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private router = inject(Router);
+  private dataService = inject(DataService);
 
   currentUser = signal<AuthUser | null>(null);
 
@@ -122,6 +124,15 @@ export class AuthService {
 
   async logout() {
     const uid = auth.currentUser?.uid;
+
+    // Eerst stoppen met luisteren, dan pas de sessie opruimen. Andersom
+    // verwijder je je eigen leesrecht terwijl er nog acht luisteraars aanstaan:
+    // die kregen dan prompt 'permission-denied' en zetten een rode foutbalk in
+    // beeld over iets wat de gebruiker zelf had gevraagd. Via het effect zou
+    // dat pas een tel later gebeuren; hier is de volgorde zeker.
+    sessieActief.set(false);
+    this.dataService.stopListeners();
+
     if (uid) {
       // Beste inspanning: lukt het opruimen niet, dan is de lokale sessie toch weg.
       try {
@@ -131,7 +142,6 @@ export class AuthService {
       }
     }
 
-    sessieActief.set(false);
     this.currentUser.set(null);
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem(SLEUTEL);

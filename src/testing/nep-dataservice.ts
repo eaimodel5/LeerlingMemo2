@@ -41,6 +41,33 @@ export class NepDataService {
   /** Zet op een tekst om de eerstvolgende schrijfactie te laten mislukken. */
   volgendeSchrijffout: string | null = null;
 
+  /** Spiegelt de levenscyclus van de echte service, zodat tests hem kunnen nabootsen. */
+  luisteraarsActief = false;
+
+  startListeners() {
+    if (this.luisteraarsActief) return;
+    this.luisteraarsActief = true;
+    this.verbindingsfout.set(null);
+  }
+
+  stopListeners() {
+    if (!this.luisteraarsActief) return;
+    this.luisteraarsActief = false;
+    this.clearData();
+  }
+
+  clearData() {
+    this.leerlingen.set([]);
+    this.docentVakken.set([]);
+    this.memoTW1TW2.set([]);
+    this.memoTW3.set([]);
+    this.mentorVoorbereiding.set([]);
+    this.voortgangsplan.set([]);
+    this.classLocks.set([]);
+    this.docentTaken.set([]);
+    this.verbindingsfout.set(null);
+  }
+
   private teller = 0;
 
   private nieuwId(soort: string) {

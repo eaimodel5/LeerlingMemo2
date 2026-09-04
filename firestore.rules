@@ -1,156 +1,171 @@
 rules_version = '2';
 
 service cloud.firestore {
-  match /databases/{database}/documents {
+match /databases/{database}/documents {
 
-    // ---------- HULPFUNCTIES ----------
+```
+// ---------- HULPFUNCTIES ----------
 
-    function isAuthenticated() {
-      return request.auth != null;
-    }
+function isAuthenticated() {
+  return request.auth != null;
+}
 
-    function sessionData() {
-      return get(/databases/$(database)/documents/userSessions/$(request.auth.uid)).data;
-    }
+function sessionData() {
+  return get(/databases/$(database)/documents/userSessions/$(request.auth.uid)).data;
+}
 
-    function codeVanSessie() {
-      return get(/databases/$(database)/documents/codes/$(sessionData().code)).data;
-    }
+function codeVanSessie() {
+  return get(/databases/$(database)/documents/codes/$(sessionData().code)).data;
+}
 
-    // Een code die is ingetrokken heeft active == false. Codes van voor die
-    // wijziging hebben het veld niet; die gelden als actief, anders zou het
-    // publiceren van deze regels iedereen in een klap buitensluiten.
-    function codeIsActief() {
-      return codeVanSessie().active != false && codeVanSessie().used != true;
-    }
+// Een code die is ingetrokken heeft active == false.
+// Codes van voor die wijziging hebben het veld mogelijk niet; die gelden
+// als actief. Hetzelfde geldt voor het oude veld used: ontbrekend betekent
+// niet gebruikt/ingetrokken.
+//
+// Map.get() is hier bewust nodig. Rechtstreekse toegang tot een ontbrekend
+// veld, zoals codeData.active, geeft in Firestore Rules een evaluation error.
+function codeDataIsActief(codeData) {
+  return codeData.get('active', true) != false
+      && codeData.get('used', false) != true;
+}
 
-    // Geldig zijn is meer dan 'er is een sessiedocument'. De sessie moet
-    // verwijzen naar een code die nog bestaat en nog actief is, en de rol in de
-    // sessie moet nog steeds de rol van die code zijn. Zonder die laatste twee
-    // controles bleef iemand die al was ingelogd gewoon doorwerken nadat zijn
-    // code was ingetrokken -- de sessie was immers al geschreven.
-    function hasValidSession() {
-      return isAuthenticated()
-          && exists(/databases/$(database)/documents/userSessions/$(request.auth.uid))
-          && sessionData().code is string
-          && exists(/databases/$(database)/documents/codes/$(sessionData().code))
-          && codeIsActief()
-          && sessionData().role == codeVanSessie().role;
-    }
+function codeIsActief() {
+  return codeDataIsActief(codeVanSessie());
+}
 
-    function userRole() {
-      return sessionData().role;
-    }
+// Geldig zijn is meer dan 'er is een sessiedocument'. De sessie moet
+// verwijzen naar een code die nog bestaat en nog actief is, en de rol in de
+// sessie moet nog steeds de rol van die code zijn. Zonder die laatste twee
+// controles bleef iemand die al was ingelogd gewoon doorwerken nadat zijn
+// code was ingetrokken -- de sessie was immers al geschreven.
+function hasValidSession() {
+  return isAuthenticated()
+      && exists(/databases/$(database)/documents/userSessions/$(request.auth.uid))
+      && sessionData().code is string
+      && exists(/databases/$(database)/documents/codes/$(sessionData().code))
+      && codeIsActief()
+      && sessionData().role == codeVanSessie().role;
+}
 
-    function isSuperuser() {
-      return hasValidSession() && userRole() == 'Superuser';
-    }
+function userRole() {
+  return sessionData().role;
+}
 
-    function isCoordinatorOrSuperuser() {
-      return hasValidSession() && (userRole() == 'Coordinator' || userRole() == 'Superuser');
-    }
+function isSuperuser() {
+  return hasValidSession() && userRole() == 'Superuser';
+}
 
-    function isMentorOfHoger() {
-      return hasValidSession() && (userRole() in ['Mentor', 'Coordinator', 'Superuser']);
-    }
+function isCoordinatorOrSuperuser() {
+  return hasValidSession() && (userRole() == 'Coordinator' || userRole() == 'Superuser');
+}
 
-    function isAuthorizedUser() {
-      return hasValidSession() && (userRole() in ['Docent', 'Mentor', 'Coordinator', 'Superuser']);
-    }
+function isMentorOfHoger() {
+  return hasValidSession() && (userRole() in ['Mentor', 'Coordinator', 'Superuser']);
+}
 
-    // ---------- TOEGANGSCODES (/codes) ----------
-    match /codes/{codeId} {
-      // Direct opvragen op document-ID is toegestaan voor geverifieerde sessies
-      // zodat loginWithCode de code exact kan valideren
-      allow get: if isAuthenticated();
-      // De volledige lijst met alle codes doorzoeken/inzien mag ALLEEN de Superuser
-      allow list: if isSuperuser();
-      // Codes toevoegen, wijzigen of intrekken is strikt voorbehouden aan de Superuser
-      allow write: if isSuperuser();
-    }
+function isAuthorizedUser() {
+  return hasValidSession() && (userRole() in ['Docent', 'Mentor', 'Coordinator', 'Superuser']);
+}
 
-    // ---------- GEBRUIKERSESSIES (/userSessions) ----------
-    match /userSessions/{userId} {
-      // Een gebruiker mag zijn eigen actieve sessie uitlezen
-      allow get: if isAuthenticated() && request.auth.uid == userId;
+// ---------- TOEGANGSCODES (/codes) ----------
+match /codes/{codeId} {
+  // Direct opvragen op document-ID is toegestaan voor geverifieerde sessies
+  // zodat loginWithCode de code exact kan valideren
+  allow get: if isAuthenticated();
+  // De volledige lijst met alle codes doorzoeken/inzien mag ALLEEN de Superuser
+  allow list: if isSuperuser();
+  // Codes toevoegen, wijzigen of intrekken is strikt voorbehouden aan de Superuser
+  allow write: if isSuperuser();
+}
 
-      // Aanmaken of bijwerken van een sessie mag ALLEEN als de code daadwerkelijk bestaat
-      // in /codes én de toegekende rol exact overeenkomt met de rol in dat code-document.
-      // Hierdoor kan niemand via de browser een valse beheerderrol forceren.
-      allow create, update: if isAuthenticated()
-          && request.auth.uid == userId
-          && request.resource.data.code is string
-          && exists(/databases/$(database)/documents/codes/$(request.resource.data.code))
-          && request.resource.data.role == get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.role
-          // Met een ingetrokken code begin je geen nieuwe sessie.
-          && get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.active != false
-          && get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.used != true;
+// ---------- GEBRUIKERSESSIES (/userSessions) ----------
+match /userSessions/{userId} {
+  // Een gebruiker mag zijn eigen actieve sessie uitlezen
+  allow get: if isAuthenticated() && request.auth.uid == userId;
 
-      // Uitloggen verwijdert de actieve sessie
-      allow delete: if isAuthenticated() && request.auth.uid == userId;
+  // Aanmaken of bijwerken van een sessie mag ALLEEN als de code daadwerkelijk bestaat
+  // in /codes én de toegekende rol exact overeenkomt met de rol in dat code-document.
+  // Hierdoor kan niemand via de browser een valse beheerderrol forceren.
+  allow create, update: if isAuthenticated()
+      && request.auth.uid == userId
+      && request.resource.data.code is string
+      && exists(/databases/$(database)/documents/codes/$(request.resource.data.code))
+      && request.resource.data.role == get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.role
+      // Met een ingetrokken code begin je geen nieuwe sessie.
+      // Ook hier via dezelfde helper, zodat legacycodes zonder active/used
+      // dezelfde betekenis hebben als bij een reeds actieve sessie.
+      && codeDataIsActief(
+        get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data
+      );
 
-      // De beheerder mag sessies inzien of opruimen
-      allow list, delete: if isSuperuser();
-    }
+  // Uitloggen verwijdert de actieve sessie
+  allow delete: if isAuthenticated() && request.auth.uid == userId;
 
-    // ---------- STAMGEGEVENS LEERLINGEN ----------
-    match /leerlingen/{leerlingId} {
-      allow read: if isAuthorizedUser();
-      // Een mentor moet docenten en de mentor aan een leerling kunnen koppelen;
-      // dat is dagelijks werk en hoort niet bij de beheerder te liggen.
-      allow create, update: if isMentorOfHoger();
-      // Verwijderen blijft bij de coordinator: dat is onomkeerbaar en raakt
-      // ook de memo's die aan die leerling hangen.
-      allow delete: if isCoordinatorOrSuperuser();
-    }
+  // De beheerder mag sessies inzien of opruimen
+  allow list, delete: if isSuperuser();
+}
 
-    // ---------- DOCENT-VAKKOPPELINGEN ----------
-    match /docentenVakken/{docentVakId} {
-      allow read: if isAuthorizedUser();
-      // De koppeling docent-vak-klas is waar de takenlijst en het
-      // mentoroverzicht op steunen. Een mentor moet die zelf kunnen leggen.
-      allow write: if isMentorOfHoger();
-    }
+// ---------- STAMGEGEVENS LEERLINGEN ----------
+match /leerlingen/{leerlingId} {
+  allow read: if isAuthorizedUser();
+  // Een mentor moet docenten en de mentor aan een leerling kunnen koppelen;
+  // dat is dagelijks werk en hoort niet bij de beheerder te liggen.
+  allow create, update: if isMentorOfHoger();
+  // Verwijderen blijft bij de coordinator: dat is onomkeerbaar en raakt
+  // ook de memo's die aan die leerling hangen.
+  allow delete: if isCoordinatorOrSuperuser();
+}
 
-    // ---------- KLASSENVERGRENDELING ----------
-    match /classLocks/{lockId} {
-      allow read: if isAuthorizedUser();
-      // "Sluit invoer" is een handeling van de mentor van die klas.
-      allow write: if isMentorOfHoger();
-    }
+// ---------- DOCENT-VAKKOPPELINGEN ----------
+match /docentenVakken/{docentVakId} {
+  allow read: if isAuthorizedUser();
+  // De koppeling docent-vak-klas is waar de takenlijst en het
+  // mentoroverzicht op steunen. Een mentor moet die zelf kunnen leggen.
+  allow write: if isMentorOfHoger();
+}
 
-    // ---------- MEMO TW1 & TW2 ----------
-    match /memoTW1TW2/{memoId} {
-      allow read: if isAuthorizedUser();
-      allow create, update: if isAuthorizedUser();
-      // De mentor mag memo's van vakdocenten inzien, aanpassen en verwijderen;
-      // dat is de bedoeling van het memopaneel in de voorbereiding.
-      allow delete: if isMentorOfHoger();
-    }
+// ---------- KLASSENVERGRENDELING ----------
+match /classLocks/{lockId} {
+  allow read: if isAuthorizedUser();
+  // "Sluit invoer" is een handeling van de mentor van die klas.
+  allow write: if isMentorOfHoger();
+}
 
-    // ---------- MEMO TW3 ----------
-    match /memoTW3/{memoId} {
-      allow read: if isAuthorizedUser();
-      allow create, update: if isAuthorizedUser();
-      allow delete: if isMentorOfHoger();
-    }
+// ---------- MEMO TW1 & TW2 ----------
+match /memoTW1TW2/{memoId} {
+  allow read: if isAuthorizedUser();
+  allow create, update: if isAuthorizedUser();
+  // De mentor mag memo's van vakdocenten inzien, aanpassen en verwijderen;
+  // dat is de bedoeling van het memopaneel in de voorbereiding.
+  allow delete: if isMentorOfHoger();
+}
 
-    // ---------- MENTORVOORBEREIDING ----------
-    match /mentorVoorbereiding/{prepId} {
-      allow read: if isAuthorizedUser();
-      allow create, update, delete: if isMentorOfHoger();
-    }
+// ---------- MEMO TW3 ----------
+match /memoTW3/{memoId} {
+  allow read: if isAuthorizedUser();
+  allow create, update: if isAuthorizedUser();
+  allow delete: if isMentorOfHoger();
+}
 
-    // ---------- VOORTGANGSPLANNEN ----------
-    match /voortgangsplan/{planId} {
-      allow read: if isAuthorizedUser();
-      allow create, update, delete: if isMentorOfHoger();
-    }
+// ---------- MENTORVOORBEREIDING ----------
+match /mentorVoorbereiding/{prepId} {
+  allow read: if isAuthorizedUser();
+  allow create, update, delete: if isMentorOfHoger();
+}
 
-    // ---------- DOCENTTAKEN & HERINNERINGEN ----------
-    match /docentTaken/{taakId} {
-      allow read: if isAuthorizedUser();
-      allow create, update, delete: if isAuthorizedUser();
-    }
-  }
+// ---------- VOORTGANGSPLANNEN ----------
+match /voortgangsplan/{planId} {
+  allow read: if isAuthorizedUser();
+  allow create, update, delete: if isMentorOfHoger();
+}
+
+// ---------- DOCENTTAKEN & HERINNERINGEN ----------
+match /docentTaken/{taakId} {
+  allow read: if isAuthorizedUser();
+  allow create, update, delete: if isAuthorizedUser();
+}
+```
+
+}
 }

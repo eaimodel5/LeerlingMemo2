@@ -2,12 +2,13 @@ import { Injectable, signal, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { UserRole, AccessCode } from '../models/data.models';
 import { signInAnonymously } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, sessieActief } from './firebase';
 import { InlogFout, INLOG_MELDINGEN, herkenInlogFout, normaliseerCode } from '../utils/inlogfout';
 import { Recht, mag } from './rechten';
 import { DataService } from './data.service';
 import { isActieveCode } from '../utils/toegangscode';
+import { CodeBewaking } from '../utils/code-bewaking';
 
 /** Sleutel waaronder de ingelogde gebruiker wordt bewaard. */
 const SLEUTEL = 'leerlingmemo_auth';
@@ -35,6 +36,12 @@ export class AuthService {
 
   /** Loopt zolang een opgeslagen inlog opnieuw bij Firebase wordt aangemeld. */
   herstelBezig = signal(false);
+
+  /** Volgt het eigen codedocument zolang er een sessie is. */
+  private codeBewaking = new CodeBewaking();
+
+  /** Voorkomt dat een uitlog die al loopt nog eens wordt gestart. */
+  private uitloggen = false;
 
   constructor() {
     if (typeof window === 'undefined') return;
@@ -115,6 +122,7 @@ export class AuthService {
       await this.schrijfSessie(uid, gebruiker);
       this.setUser(gebruiker);
       sessieActief.set(true);
+      this.bewaakEigenCode(snap.id);
       return { ok: true };
     } catch (error) {
       console.error('Inloggen met code mislukt', error);
@@ -123,6 +131,13 @@ export class AuthService {
   }
 
   async logout() {
+    if (this.uitloggen) return;
+    this.uitloggen = true;
+
+    // De bewaking op het eigen codedocument hoort als eerste weg: anders kan
+    // die tijdens het uitloggen zelf nog een keer afgaan.
+    this.codeBewaking.stop();
+
     const uid = auth.currentUser?.uid;
 
     // Eerst stoppen met luisteren, dan pas de sessie opruimen. Andersom
@@ -147,7 +162,42 @@ export class AuthService {
       sessionStorage.removeItem(SLEUTEL);
       localStorage.removeItem(SLEUTEL);
     }
-    this.router.navigate(['/login']);
+
+    try {
+      await this.router.navigate(['/login']);
+    } finally {
+      // Ook als het navigeren misgaat moet een volgende uitlogpoging kunnen.
+      this.uitloggen = false;
+    }
+  }
+
+  /**
+   * Volgt het eigen codedocument en logt uit zodra dat verdwijnt of wordt
+   * ingetrokken.
+   *
+   * Alleen dit ene document, niet de collectie: /codes doorzoeken mag volgens
+   * de regels alleen de beheerder, terwijl een gerichte opvraag voor iedere
+   * aangemelde gebruiker is toegestaan.
+   */
+  private bewaakEigenCode(codeId: string) {
+    if (typeof window === 'undefined') return;
+
+    this.codeBewaking.volg(
+      melden =>
+        onSnapshot(
+          doc(db, 'codes', codeId),
+          snap => melden(snap.exists(), snap.data() as AccessCode | undefined),
+          error => {
+            // Niet uitloggen op een netwerkstoring; alleen op een code die
+            // aantoonbaar weg of ingetrokken is.
+            console.warn('Bewaking van de eigen toegangscode gaf een fout:', error);
+          },
+        ),
+      () => {
+        console.info('De eigen toegangscode is ingetrokken of verwijderd; sessie wordt beëindigd.');
+        void this.logout();
+      },
+    );
   }
 
   /**
@@ -216,6 +266,9 @@ export class AuthService {
       await this.schrijfSessie(uid, bijgewerkt);
       this.setUser(bijgewerkt);
       sessieActief.set(true);
+      // Pas hier, niet in de constructor: nu pas staat vast welke code bij deze
+      // sessie hoort.
+      this.bewaakEigenCode(snap.id);
     } catch (error) {
       console.error('Sessie herstellen mislukt', error);
       // Niet uitloggen: bij een haperende verbinding is de gebruiker morgen

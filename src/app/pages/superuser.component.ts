@@ -12,7 +12,10 @@ import {
   bezwaarTegenIntrekken,
   isActieveCode,
   magActiveren,
+  moetUitloggenNaIntrekken,
   uitlegBijBezwaar,
+  veldenVoorActiveren,
+  veldenVoorIntrekken,
 } from '../utils/toegangscode';
 import { AuthService } from '../services/auth.service';
 
@@ -546,9 +549,12 @@ export class SuperuserComponent implements OnDestroy {
 
     this.bezigMetCode.set(code.id);
     try {
+      // Bij activeren gaat `used` mee terug naar false. Alleen `active: true`
+      // is niet genoeg: een legacydocument met `used: true` bleef anders
+      // geweigerd worden terwijl het scherm meldde dat de code weer werkte.
       await setDoc(
         doc(db, 'codes', code.id),
-        { active: actief, gewijzigdOp: new Date().toISOString() },
+        actief ? veldenVoorActiveren() : veldenVoorIntrekken(),
         { merge: true },
       );
       this.melding.set({
@@ -557,6 +563,15 @@ export class SuperuserComponent implements OnDestroy {
           ? `Toegangscode van ${code.ownerName} is weer actief.`
           : `Toegangscode van ${code.ownerName} is ingetrokken. Wie er nu mee is ingelogd, verliest bij de eerstvolgende actie zijn toegang.`,
       });
+
+      // Trok de beheerder zijn eigen code in, dan is zijn sessie zojuist
+      // ongeldig geworden. Dat mag -- er blijft immers een andere actieve
+      // beheerderscode over -- maar de app moet hem dan wel netjes uitloggen in
+      // plaats van te doen alsof hij nog ingelogd is.
+      if (!actief && moetUitloggenNaIntrekken(code.id, this.auth.currentUser()?.code)) {
+        await this.auth.logout();
+        return;
+      }
     } catch (e) {
       console.error('Code intrekken/activeren mislukt', e);
       const reden = e instanceof Error ? e.message : String(e);

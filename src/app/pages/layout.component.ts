@@ -93,6 +93,11 @@ import { CommonModule } from '@angular/common';
               <mat-icon class="mr-6 shrink-0 text-[#5c7bb0]">school</mat-icon>
               <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300">Docenten/Vakken</span>
             </a>
+            <a routerLink="/docenten" routerLinkActive="bg-[#152a4f] text-[#e87700] !border-l-[#e87700]"
+               class="flex items-center px-6 py-3 hover:bg-[#152a4f] text-slate-300 transition-all border-l-4 border-transparent min-w-max" title="Docenten">
+              <mat-icon class="mr-6 shrink-0 text-[#5c7bb0]">badge</mat-icon>
+              <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300">Docenten</span>
+            </a>
           }
 
           @if (auth.mag('systeembeheer')) {

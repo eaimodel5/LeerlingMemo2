@@ -1,6 +1,7 @@
 import {
   AccessCode,
   ClassLock,
+  Docent,
   DocentTaak,
   DocentVak,
   Leerling,
@@ -48,6 +49,18 @@ export function maakLeerling(over: Partial<Leerling> = {}): Leerling {
     mentorEmail: MENTOR.email,
     schooljaar: SCHOOLJAAR,
     actief: true,
+    ...over,
+  };
+}
+
+export function maakDocent(over: Partial<Docent> = {}): Docent {
+  return {
+    afkorting: 'vis',
+    naam: DOCENT.naam,
+    email: DOCENT.email,
+    actief: true,
+    aangemaaktOp: NU,
+    gewijzigdOp: NU,
     ...over,
   };
 }

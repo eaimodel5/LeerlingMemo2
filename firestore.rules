@@ -116,6 +116,18 @@ match /leerlingen/{leerlingId} {
   allow delete: if isCoordinatorOrSuperuser();
 }
 
+// ---------- DOCENTEN (/docenten) ----------
+// Het document-ID is de schoolafkorting: /docenten/vis
+match /docenten/{afkorting} {
+  allow read: if isAuthorizedUser();
+  // Docenten van een afkorting voorzien is werk dat bij de klassenadministratie
+  // hoort, net als de docent-vakkoppelingen zelf.
+  allow create, update: if isMentorOfHoger();
+  // Verwijderen blijft bij de coordinator: een docent weghalen raakt straks
+  // alles wat aan zijn afkorting hangt.
+  allow delete: if isCoordinatorOrSuperuser();
+}
+
 // ---------- DOCENT-VAKKOPPELINGEN ----------
 match /docentenVakken/{docentVakId} {
   allow read: if isAuthorizedUser();

@@ -207,6 +207,42 @@ describe('memo schrijven', () => {
   });
 });
 
+describe('docenten (/docenten)', () => {
+  const docent = { afkorting: 'vis', naam: 'Hans Visser', email: 'visser@school.nl', actief: true };
+
+  it('mag door iedereen met een geldige sessie gelezen worden', async () => {
+    const db = await alsGebruiker(omgeving, { rol: 'Docent' });
+    await seed(omgeving, 'docenten/vis', docent);
+    await assertSucceeds(getDoc(doc(db, 'docenten', 'vis')));
+    await assertSucceeds(getDocs(collection(db, 'docenten')));
+  });
+
+  it('niet ingelogd komt er niet bij', async () => {
+    await seed(omgeving, 'docenten/vis', docent);
+    await assertFails(getDoc(doc(alsOnbekende(omgeving), 'docenten', 'vis')));
+  });
+
+  it('aanmaken en bijwerken mag vanaf mentor', async () => {
+    const db = await alsGebruiker(omgeving, { rol: 'Mentor' });
+    await assertSucceeds(setDoc(doc(db, 'docenten', 'vis'), docent));
+    await assertSucceeds(setDoc(doc(db, 'docenten', 'vis'), { naam: 'H. Visser' }, { merge: true }));
+  });
+
+  it('aanmaken mag niet door een vakdocent', async () => {
+    const db = await alsGebruiker(omgeving, { rol: 'Docent' });
+    await assertFails(setDoc(doc(db, 'docenten', 'vis'), docent));
+  });
+
+  it('verwijderen mag pas vanaf coordinator', async () => {
+    const mentor = await alsGebruiker(omgeving, { uid: 'mentor', rol: 'Mentor', code: 'MENT-0001' });
+    await seed(omgeving, 'docenten/vis', docent);
+    await assertFails(deleteDoc(doc(mentor, 'docenten', 'vis')));
+
+    const coordinator = await alsGebruiker(omgeving, { uid: 'coord', rol: 'Coordinator', code: 'COOR-0001' });
+    await assertSucceeds(deleteDoc(doc(coordinator, 'docenten', 'vis')));
+  });
+});
+
 describe('leerlingen beheren', () => {
   it('bewerken mag vanaf mentor', async () => {
     const db = await alsGebruiker(omgeving, { rol: 'Mentor' });

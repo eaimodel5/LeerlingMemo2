@@ -87,3 +87,68 @@ export function uitlegBijBezwaar(bezwaar: IntrekBezwaar): string {
 export function magActiveren(code: Pick<AccessCode, 'active' | 'used'>): boolean {
   return !isActieveCode(code);
 }
+
+/**
+ * Wat er wordt weggeschreven bij het weer aanzetten van een code.
+ *
+ * `used: false` hoort er wél bij en `active: true` alleen is niet genoeg. De
+ * geldigheidscontrole leest `active !== false && used !== true`; bij een
+ * legacydocument waarin `used` op `true` staat bleef die tweede voorwaarde
+ * anders onwaar. Het scherm meldde dan dat de code weer actief was terwijl
+ * zowel `isActieveCode()` als `firestore.rules` hem bleef weigeren.
+ *
+ * `used` wordt hier dus opgeheven, niet verwijderd: het veld blijft in het
+ * model staan tot de geplande datamigratie.
+ */
+export function veldenVoorActiveren(moment = new Date().toISOString()) {
+  return { active: true, used: false, gewijzigdOp: moment };
+}
+
+/**
+ * Wat er wordt weggeschreven bij het intrekken.
+ *
+ * `active: false` volstaat: die maakt de eerste voorwaarde al onwaar,
+ * ongeacht wat er in `used` staat.
+ */
+export function veldenVoorIntrekken(moment = new Date().toISOString()) {
+  return { active: false, gewijzigdOp: moment };
+}
+
+/** Vergelijkt twee code-ids zoals ze ook worden ingetypt: zonder spaties, hoofdletterongevoelig. */
+function zelfdeCode(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return a.trim().toUpperCase() === b.trim().toUpperCase();
+}
+
+/**
+ * Moet de beheerder zelf uitloggen nadat hij deze code heeft ingetrokken?
+ *
+ * Met twee actieve beheerderscodes mag hij er terecht een intrekken -- ook die
+ * van zichzelf. Firestore ontneemt hem daarna correct zijn rechten, maar de
+ * app bleef lokaal tonen alsof hij was ingelogd; elke volgende handeling liep
+ * dan op 'permission-denied'. Beter is het om die sessie meteen netjes te
+ * beëindigen.
+ *
+ * Dit blokkeert niets: het intrekken zelf is en blijft toegestaan.
+ */
+export function moetUitloggenNaIntrekken(
+  ingetrokkenCode: string | null | undefined,
+  eigenCode: string | null | undefined,
+): boolean {
+  return zelfdeCode(ingetrokkenCode, eigenCode);
+}
+
+/**
+ * Moet de lopende sessie stoppen op grond van het eigen codedocument?
+ *
+ * Waar is het document verdwenen of niet meer geldig. Firestore weigert dan
+ * toch al alles; deze controle zorgt ervoor dat de gebruiker een nette uitlog
+ * ziet in plaats van schermen die stilletjes leeg blijven.
+ */
+export function sessieMoetStoppen(
+  bestaat: boolean,
+  data?: Pick<AccessCode, 'active' | 'used'> | null,
+): boolean {
+  if (!bestaat) return true;
+  return !isActieveCode(data);
+}

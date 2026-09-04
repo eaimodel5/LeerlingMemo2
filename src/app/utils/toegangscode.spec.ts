@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { AccessCode } from '../models/data.models';
 import {
   actieveCodes,
+  moetUitloggenNaIntrekken,
+  sessieMoetStoppen,
+  veldenVoorActiveren,
+  veldenVoorIntrekken,
   actieveCodesMetRol,
   bezwaarTegenIntrekken,
   isActieveCode,
@@ -128,5 +132,88 @@ describe('weer activeren', () => {
 
   it('kan ook bij een code met het oude used-veld', () => {
     expect(magActiveren(code({ used: true }))).toBe(true);
+  });
+});
+
+describe('wat er wordt weggeschreven bij intrekken en activeren', () => {
+  it('intrekken zet active op false', () => {
+    const velden = veldenVoorIntrekken('2026-09-04T12:00:00.000Z');
+    expect(velden.active).toBe(false);
+    expect(velden.gewijzigdOp).toBe('2026-09-04T12:00:00.000Z');
+  });
+
+  it('activeren zet active op true en used op false', () => {
+    // Alleen `active: true` volstond niet. De geldigheidscontrole leest
+    // `active !== false && used !== true`; bij een legacydocument bleef die
+    // tweede voorwaarde anders onwaar.
+    const velden = veldenVoorActiveren();
+    expect(velden.active).toBe(true);
+    expect(velden.used).toBe(false);
+  });
+
+  it('een ingetrokken code is daarna echt ingetrokken', () => {
+    expect(isActieveCode({ ...code({ active: true }), ...veldenVoorIntrekken() })).toBe(false);
+  });
+
+  it('een geactiveerde code is daarna echt actief', () => {
+    expect(isActieveCode({ ...code({ active: false }), ...veldenVoorActiveren() })).toBe(true);
+  });
+
+  it('een legacycode met used:true wordt door activeren echt bruikbaar', () => {
+    // Dit was het randgeval: het scherm meldde dat de code weer actief was,
+    // terwijl isActieveCode() en firestore.rules hem bleven weigeren.
+    const legacy: Partial<AccessCode> = code({ used: true });
+    delete legacy.active;
+    expect(isActieveCode(legacy)).toBe(false);
+
+    expect(isActieveCode({ ...legacy, ...veldenVoorActiveren() })).toBe(true);
+  });
+
+  it('laat een gewone actieve code werken zoals hij deed', () => {
+    const gewoon = code({ active: true, used: false });
+    expect(isActieveCode(gewoon)).toBe(true);
+    expect(isActieveCode({ ...gewoon, ...veldenVoorActiveren() })).toBe(true);
+  });
+});
+
+describe('de eigen code intrekken', () => {
+  it('vraagt om uitloggen als het je eigen code is', () => {
+    expect(moetUitloggenNaIntrekken('AAAA-BBBB', 'AAAA-BBBB')).toBe(true);
+  });
+
+  it('laat je met rust bij de code van iemand anders', () => {
+    expect(moetUitloggenNaIntrekken('CCCC-DDDD', 'AAAA-BBBB')).toBe(false);
+  });
+
+  it('vergelijkt hoofdletterongevoelig en zonder spaties', () => {
+    expect(moetUitloggenNaIntrekken(' aaaa-bbbb ', 'AAAA-BBBB')).toBe(true);
+  });
+
+  it('doet niets als een van beide ontbreekt', () => {
+    expect(moetUitloggenNaIntrekken('AAAA-BBBB', undefined)).toBe(false);
+    expect(moetUitloggenNaIntrekken(undefined, 'AAAA-BBBB')).toBe(false);
+    expect(moetUitloggenNaIntrekken('', '')).toBe(false);
+  });
+});
+
+describe('moet de sessie stoppen op grond van het eigen codedocument', () => {
+  it('nee bij een actieve code', () => {
+    expect(sessieMoetStoppen(true, { active: true, used: false })).toBe(false);
+  });
+
+  it('nee bij een code zonder het veld active', () => {
+    expect(sessieMoetStoppen(true, {})).toBe(false);
+  });
+
+  it('ja bij een ingetrokken code', () => {
+    expect(sessieMoetStoppen(true, { active: false })).toBe(true);
+  });
+
+  it('ja bij een legacycode met used:true', () => {
+    expect(sessieMoetStoppen(true, { used: true })).toBe(true);
+  });
+
+  it('ja als het document is verwijderd', () => {
+    expect(sessieMoetStoppen(false)).toBe(true);
   });
 });

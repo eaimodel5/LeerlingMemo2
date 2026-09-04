@@ -127,3 +127,37 @@ zodra Firebase Authentication aanstaat.
    vragen, en controleer dat dat mislukt.
 4. Stem af met wie binnen de school over verwerkersovereenkomsten gaat — er komt een
    Amerikaanse clouddienst bij in de keten.
+
+---
+
+## Verplichte instelling: anoniem aanmelden aanzetten
+
+De Firestore-regels beslissen aan de hand van `/userSessions/{uid}` wie je bent. Die
+`uid` komt van Firebase Authentication. De app meldt zich daarvoor **anoniem** aan —
+dat is geen inlog voor de gebruiker, alleen een uniek kenmerk per tabblad waar de
+regels iets aan kunnen ophangen. De echte inlog blijft de toegangscode.
+
+Zet dit één keer aan, anders lukt inloggen bij niemand:
+
+1. Ga naar de Firebase-console → **Authentication** → **Sign-in method**.
+2. Kies **Anonymous** en zet hem op **Enabled**.
+3. Opslaan.
+
+Staat dit uit, dan meldt de inlogpagina dat met zoveel woorden ("Zet in de
+Firebase-console onder Authentication → Sign-in method de methode Anonymous aan") in
+plaats van met "ongeldige code".
+
+### Wat er bij het inloggen gebeurt
+
+1. Het tabblad meldt zich anoniem aan bij Firebase en krijgt een `uid`.
+2. De ingetypte code wordt **op document-ID** opgehaald uit `/codes`. Dat is een `get`,
+   geen `list` — zoeken door de hele codelijst mag alleen de beheerder.
+3. De app schrijft `/userSessions/{uid}` met de code en de rol. De regel controleert
+   zelf dat die code bestaat en dat de rol exact gelijk is aan die in het
+   code-document, dus een rol vervalsen vanuit de browser levert niets op.
+4. Pas daarna beginnen de luisteraars van de DataService te lezen.
+5. Uitloggen verwijdert het sessiedocument.
+
+De aanmelding staat in `sessionStorage`, dus elk tabblad krijgt een eigen `uid` en
+daarmee een eigen rol. Op een gedeelde computer kan de ene collega als docent inloggen
+terwijl de andere in een tweede tabblad als mentor werkt.

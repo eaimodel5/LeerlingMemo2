@@ -3,14 +3,10 @@ import { CommonModule } from '@angular/common';
 import { AccessCode, UserRole } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
 import { parseCsv, downloadCsv, headersMatch } from '../utils/csv';
-import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getFirestore, collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBatch, getDocs } from 'firebase/firestore';
-import firebaseConfig from '../../../firebase-applet-config.json';
+import { collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBatch, getDocs } from 'firebase/firestore';
+import { db } from '../services/firebase';
 import { Melding } from '../utils/opslag';
 import { AuthService } from '../services/auth.service';
-
-const app = !getApps().length ? initializeApp(firebaseConfig as any) : getApp();
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 @Component({
   selector: 'app-superuser',

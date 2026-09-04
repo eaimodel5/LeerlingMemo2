@@ -70,11 +70,13 @@ export class LoginComponent {
     this.error.set(null);
 
     try {
-      const success = await this.authService.loginWithCode(this.code);
-      if (success) {
+      const resultaat = await this.authService.loginWithCode(this.code);
+      if (resultaat.ok) {
         this.router.navigate(['/']);
       } else {
-        this.error.set('Ongeldige of verlopen toegangscode.');
+        // Toonde hier altijd "Ongeldige of verlopen toegangscode", ook als de
+        // code prima was en alleen de database of de aanmelding dwarslag.
+        this.error.set(resultaat.melding);
       }
     } catch {
       this.error.set('Er is een fout opgetreden.');

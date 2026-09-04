@@ -1,13 +1,7 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, effect, signal } from '@angular/core';
 import { Leerling, DocentVak, MemoTW1TW2, MemoTW3, MentorVoorbereiding, Voortgangsplan, ClassLock, DocentTaak } from '../models/data.models';
-import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import firebaseConfig from '../../../firebase-applet-config.json';
-
-const app = !getApps().length ? initializeApp(firebaseConfig as any) : getApp();
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-const auth = getAuth(app);
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { auth, db, sessieActief } from './firebase';
 
 enum OperationType {
   CREATE = 'create',
@@ -107,8 +101,24 @@ export class DataService {
    */
   verbindingsfout = signal<string | null>(null);
 
+  /** Voorkomt dat de luisteraars twee keer worden opgezet na opnieuw inloggen. */
+  private gestart = false;
+
   constructor() {
-    this.initData();
+    // Tijdens het voorrenderen bestaat er geen sessie en valt er niets te
+    // luisteren; de schermen halen hun gegevens toch pas in de browser op.
+    if (typeof window === 'undefined') return;
+
+    // Wachten tot AuthService het sessiedocument in Firestore heeft staan.
+    // Startten de luisteraars meteen bij het opstarten van de app, dan
+    // weigerden de beveiligingsregels alle acht en bleef elk scherm leeg — ook
+    // na een geslaagde inlog, want een luisteraar die is afgebroken komt niet
+    // vanzelf terug.
+    effect(() => {
+      if (!sessieActief() || this.gestart) return;
+      this.gestart = true;
+      this.initData();
+    });
   }
 
   private initData() {

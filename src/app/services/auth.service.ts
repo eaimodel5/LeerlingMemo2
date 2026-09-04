@@ -1,12 +1,10 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { UserRole, AccessCode } from '../models/data.models';
-import { initializeApp, getApp, getApps } from 'firebase/app';
-import { getFirestore, collection, getDocs, query, where, limit } from 'firebase/firestore';
-import firebaseConfig from '../../../firebase-applet-config.json';
-
-const app = !getApps().length ? initializeApp(firebaseConfig as any) : getApp();
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+import { signInAnonymously } from 'firebase/auth';
+import { doc, getDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { auth, db, sessieActief } from './firebase';
+import { InlogFout, INLOG_MELDINGEN, herkenInlogFout, normaliseerCode } from '../utils/inlogfout';
 
 /** Sleutel waaronder de ingelogde gebruiker wordt bewaard. */
 const SLEUTEL = 'leerlingmemo_auth';
@@ -19,11 +17,20 @@ export interface AuthUser {
   code?: string;
 }
 
+export type InlogResultaat = { ok: true } | { ok: false; reden: InlogFout; melding: string };
+
+function fout(reden: InlogFout): InlogResultaat {
+  return { ok: false, reden, melding: INLOG_MELDINGEN[reden] };
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private router = inject(Router);
-  
+
   currentUser = signal<AuthUser | null>(null);
+
+  /** Loopt zolang een opgeslagen inlog opnieuw bij Firebase wordt aangemeld. */
+  herstelBezig = signal(false);
 
   constructor() {
     if (typeof window === 'undefined') return;
@@ -44,16 +51,24 @@ export class AuthService {
 
     if (!opgeslagen) return;
 
+    let gebruiker: AuthUser;
     try {
-      const gebruiker = JSON.parse(opgeslagen) as AuthUser;
-      this.currentUser.set(gebruiker);
-      // Vastleggen voor dit tabblad, zodat een latere inlog elders hem niet meer wijzigt.
-      sessionStorage.setItem(SLEUTEL, opgeslagen);
+      gebruiker = JSON.parse(opgeslagen) as AuthUser;
     } catch {
       // Onleesbare inhoud: opruimen en uitgelogd starten.
       sessionStorage.removeItem(SLEUTEL);
       localStorage.removeItem(SLEUTEL);
+      return;
     }
+
+    this.currentUser.set(gebruiker);
+    sessionStorage.setItem(SLEUTEL, opgeslagen);
+
+    // De opgeslagen gebruiker zegt alleen wie er in dít tabblad was ingelogd.
+    // Firestore weet daar niets van: de aanmelding staat in sessionStorage van
+    // Firebase zelf en is bij een nieuw tabblad leeg. Zonder deze stap ziet het
+    // scherm er ingelogd uit terwijl geen enkele lijst zich vult.
+    void this.herstelSessie(gebruiker);
   }
 
   // Let op: hier stond een inlog met een vaste gebruikersnaam en wachtwoord.
@@ -62,49 +77,137 @@ export class AuthService {
   // toegangscode met de rol 'Superuser'; zie BEVEILIGING.md voor het aanmaken
   // daarvan. Beschouw het oude wachtwoord als gelekt en gebruik het nergens meer.
 
-  async loginWithCode(code: string): Promise<boolean> {
+  /**
+   * Logt in met een toegangscode.
+   *
+   * Zocht de code eerder op met een query op het veld `code`. Dat is voor
+   * Firestore een `list`-bewerking op de hele collectie, en die is sinds de
+   * nieuwe regels voorbehouden aan de beheerder — dus kreeg iedereen
+   * 'permission-denied', dat als "ongeldige code" in beeld kwam terwijl de code
+   * gewoon bestond. De code ís het document-ID, dus één gerichte `get` volstaat
+   * en dat mag wel.
+   */
+  async loginWithCode(code: string): Promise<InlogResultaat> {
+    const schoon = normaliseerCode(code);
+    if (!schoon) return fout('onbekende-code');
+
     try {
-      const q = query(
-        collection(db, 'codes'),
-        where('code', '==', code),
-        where('used', '==', false),
-        limit(1)
-      );
-      const snapshot = await getDocs(q);
-      
-      if (!snapshot.empty) {
-        const docSnap = snapshot.docs[0];
-        const data = docSnap.data() as AccessCode;
-        
-        // Mark code as used (optional, user might want to keep it valid for a session)
-        // For now, let's just log them in. 
-        // If the user wants reusable codes, we don't update 'used'.
-        // But the prompt implies "uitdelen", maybe single use?
-        // Let's keep it simple: if code exists, log in.
-        
-        const user: AuthUser = {
-          name: data.ownerName,
-          email: data.ownerEmail,
-          role: data.role,
-          vak: data.vak,
-          code: data.code
-        };
-        this.setUser(user);
-        return true;
-      }
+      const uid = await this.meldAanBijFirebase();
+
+      const snap = await getDoc(doc(db, 'codes', schoon));
+      if (!snap.exists()) return fout('onbekende-code');
+
+      const data = snap.data() as AccessCode;
+      if (data.used === true) return fout('code-ingetrokken');
+
+      const gebruiker: AuthUser = {
+        name: data.ownerName,
+        email: data.ownerEmail,
+        role: data.role,
+        vak: data.vak,
+        code: snap.id,
+      };
+
+      await this.schrijfSessie(uid, gebruiker);
+      this.setUser(gebruiker);
+      sessieActief.set(true);
+      return { ok: true };
     } catch (error) {
-      console.error('Login with code failed', error);
+      console.error('Inloggen met code mislukt', error);
+      return fout(herkenInlogFout(error));
     }
-    return false;
   }
 
-  logout() {
+  async logout() {
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      // Beste inspanning: lukt het opruimen niet, dan is de lokale sessie toch weg.
+      try {
+        await deleteDoc(doc(db, 'userSessions', uid));
+      } catch (error) {
+        console.warn('Sessie opruimen mislukt', error);
+      }
+    }
+
+    sessieActief.set(false);
     this.currentUser.set(null);
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem(SLEUTEL);
       localStorage.removeItem(SLEUTEL);
     }
     this.router.navigate(['/login']);
+  }
+
+  /**
+   * Meldt dit tabblad aan bij Firebase en geeft de uid terug.
+   *
+   * De app deed dit nooit: er was wel een eigen inlog met toegangscodes, maar
+   * voor Firestore bleef iedere bezoeker een onbekende. Zolang de regels op
+   * `if true` stonden viel dat niet op.
+   */
+  private async meldAanBijFirebase(): Promise<string> {
+    if (auth.currentUser) return auth.currentUser.uid;
+    const resultaat = await signInAnonymously(auth);
+    return resultaat.user.uid;
+  }
+
+  /**
+   * Legt de rol vast in /userSessions/{uid}.
+   *
+   * Dit document is wat de beveiligingsregels lezen. De regel controleert zelf
+   * dat `code` bestaat in /codes en dat `role` exact gelijk is aan de rol in dat
+   * code-document — de rol vervalsen vanuit de browser levert dus niets op.
+   */
+  private async schrijfSessie(uid: string, gebruiker: AuthUser) {
+    await setDoc(doc(db, 'userSessions', uid), {
+      code: gebruiker.code,
+      role: gebruiker.role,
+      ownerName: gebruiker.name,
+      ownerEmail: gebruiker.email,
+      startedAt: new Date().toISOString(),
+    });
+  }
+
+  /** Meldt een opgeslagen inlog opnieuw aan, bij een herlading of een nieuw tabblad. */
+  private async herstelSessie(gebruiker: AuthUser) {
+    if (!gebruiker.code) {
+      // Van vóór deze wijziging opgeslagen: er valt niets te controleren.
+      this.currentUser.set(null);
+      sessionStorage.removeItem(SLEUTEL);
+      localStorage.removeItem(SLEUTEL);
+      return;
+    }
+
+    this.herstelBezig.set(true);
+    try {
+      const uid = await this.meldAanBijFirebase();
+      const snap = await getDoc(doc(db, 'codes', gebruiker.code));
+      if (!snap.exists() || (snap.data() as AccessCode).used === true) {
+        await this.logout();
+        return;
+      }
+
+      // De rol komt uit het code-document, niet uit de browseropslag: is de rol
+      // ingetrokken of gewijzigd, dan geldt de nieuwe.
+      const data = snap.data() as AccessCode;
+      const bijgewerkt: AuthUser = {
+        name: data.ownerName,
+        email: data.ownerEmail,
+        role: data.role,
+        vak: data.vak,
+        code: snap.id,
+      };
+
+      await this.schrijfSessie(uid, bijgewerkt);
+      this.setUser(bijgewerkt);
+      sessieActief.set(true);
+    } catch (error) {
+      console.error('Sessie herstellen mislukt', error);
+      // Niet uitloggen: bij een haperende verbinding is de gebruiker morgen
+      // gewoon weer wie hij was. De schermen tonen dan de verbindingsmelding.
+    } finally {
+      this.herstelBezig.set(false);
+    }
   }
 
   private setUser(user: AuthUser) {

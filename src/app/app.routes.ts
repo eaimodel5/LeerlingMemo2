@@ -27,6 +27,7 @@ export const routes: Routes = [
       { path: 'magister-export', loadComponent: () => import('./pages/magister-export.component').then(m => m.MagisterExportComponent), canActivate: [mentorOrHigherGuard] },
       { path: 'manage-students', loadComponent: () => import('./pages/manage-students.component').then(m => m.ManageStudentsComponent), canActivate: [rechtGuard('leerlingenBewerken')] },
       { path: 'manage-teachers', loadComponent: () => import('./pages/manage-teachers.component').then(m => m.ManageTeachersComponent), canActivate: [rechtGuard('docentkoppelingBewerken')] },
+      { path: 'docenten', loadComponent: () => import('./pages/manage-docenten.component').then(m => m.ManageDocentenComponent), canActivate: [rechtGuard('docentkoppelingBewerken')] },
       { path: 'beheer', loadComponent: () => import('./pages/beheer-dashboard.component').then(m => m.BeheerDashboardComponent), canActivate: [superuserGuard] },
       { path: 'superuser', loadComponent: () => import('./pages/superuser.component').then(m => m.SuperuserComponent), canActivate: [superuserGuard] },
       { path: 'handleiding', loadComponent: () => import('./pages/manual.component').then(m => m.ManualComponent), canActivate: [authGuard] },

@@ -1,6 +1,7 @@
 import { signal } from '@angular/core';
 import {
   ClassLock,
+  Docent,
   DocentTaak,
   DocentVak,
   Leerling,
@@ -27,6 +28,7 @@ import {
 export class NepDataService {
   leerlingen = signal<Leerling[]>([]);
   docentVakken = signal<DocentVak[]>([]);
+  docenten = signal<Docent[]>([]);
   memoTW1TW2 = signal<MemoTW1TW2[]>([]);
   memoTW3 = signal<MemoTW3[]>([]);
   mentorVoorbereiding = signal<MentorVoorbereiding[]>([]);
@@ -59,6 +61,7 @@ export class NepDataService {
   clearData() {
     this.leerlingen.set([]);
     this.docentVakken.set([]);
+    this.docenten.set([]);
     this.memoTW1TW2.set([]);
     this.memoTW3.set([]);
     this.mentorVoorbereiding.set([]);
@@ -111,6 +114,22 @@ export class NepDataService {
 
   async bulkDeleteLeerlingen(ids: string[]) {
     for (const id of ids) await this.deleteLeerling(id);
+  }
+
+  // --- Docenten ---
+  async saveDocent(docent: Docent) {
+    this.controleer('saveDocent', docent.afkorting);
+    const nu = new Date().toISOString();
+    this.docenten.update(l => {
+      const bestaand = l.find(d => d.afkorting === docent.afkorting);
+      const compleet = { ...docent, aangemaaktOp: docent.aangemaaktOp ?? bestaand?.aangemaaktOp ?? nu, gewijzigdOp: nu };
+      return bestaand ? l.map(d => (d.afkorting === docent.afkorting ? compleet : d)) : [...l, compleet];
+    });
+  }
+
+  async deleteDocent(afkorting: string) {
+    this.controleer('deleteDocent', afkorting);
+    this.docenten.update(l => l.filter(d => d.afkorting !== afkorting));
   }
 
   // --- Docent/vak ---

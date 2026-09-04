@@ -1,6 +1,6 @@
 import { Injectable, effect, signal } from '@angular/core';
-import { Leerling, DocentVak, MemoTW1TW2, MemoTW3, MentorVoorbereiding, Voortgangsplan, ClassLock, DocentTaak } from '../models/data.models';
-import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { Leerling, Docent, DocentVak, MemoTW1TW2, MemoTW3, MentorVoorbereiding, Voortgangsplan, ClassLock, DocentTaak } from '../models/data.models';
+import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, sessieActief } from './firebase';
 import { Luisteraars, Stopper } from '../utils/luisteraars';
 
@@ -87,6 +87,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 export class DataService {
   leerlingen = signal<Leerling[]>([]);
   docentVakken = signal<DocentVak[]>([]);
+  /** De docenten als personen, met hun schoolafkorting als sleutel. */
+  docenten = signal<Docent[]>([]);
   memoTW1TW2 = signal<MemoTW1TW2[]>([]);
   memoTW3 = signal<MemoTW3[]>([]);
   mentorVoorbereiding = signal<MentorVoorbereiding[]>([]);
@@ -150,6 +152,7 @@ export class DataService {
   clearData() {
     this.leerlingen.set([]);
     this.docentVakken.set([]);
+    this.docenten.set([]);
     this.memoTW1TW2.set([]);
     this.memoTW3.set([]);
     this.mentorVoorbereiding.set([]);
@@ -164,6 +167,9 @@ export class DataService {
       onSnapshot(collection(db, 'leerlingen'), (snapshot) => {
         this.leerlingen.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Leerling)));
       }, (error) => this.meldVerbindingsprobleem(error, 'leerlingen')),
+      onSnapshot(collection(db, 'docenten'), (snapshot) => {
+        this.docenten.set(snapshot.docs.map(d => ({ ...d.data(), afkorting: d.id } as Docent)));
+      }, (error) => this.meldVerbindingsprobleem(error, 'docenten')),
       onSnapshot(collection(db, 'docentenVakken'), (snapshot) => {
         this.docentVakken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentVak)));
       }, (error) => this.meldVerbindingsprobleem(error, 'docentenVakken')),
@@ -278,6 +284,40 @@ export class DataService {
   }
 
   // --- DocentenVakken ---
+  // --- Docenten ---
+
+  /**
+   * Zet een docent neer of werkt hem bij.
+   *
+   * Het document-ID is de afkorting; er is dus geen aparte `add` en `update`.
+   * Wie dezelfde afkorting nog eens wegschrijft, overschrijft dezelfde docent --
+   * en dat is precies de bedoeling van een sleutel die uit de school komt.
+   * Of de afkorting mag, wordt vooraf gecontroleerd in utils/docent-afkorting.
+   */
+  async saveDocent(docent: Docent) {
+    const afkorting = docent.afkorting;
+    try {
+      const bestaat = this.docenten().some(d => d.afkorting === afkorting);
+      const nu = new Date().toISOString();
+      await setDoc(
+        doc(db, 'docenten', afkorting),
+        {
+          ...docent,
+          afkorting,
+          aangemaaktOp: docent.aangemaaktOp ?? nu,
+          gewijzigdOp: nu,
+        },
+        { merge: bestaat },
+      );
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'docenten'); }
+  }
+
+  async deleteDocent(afkorting: string) {
+    try {
+      await deleteDoc(doc(db, 'docenten', afkorting));
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'docenten'); }
+  }
+
   async addDocentVak(item: Omit<DocentVak, 'id'>): Promise<string> {
     try {
       const id = this.generateId('docentenVakken');

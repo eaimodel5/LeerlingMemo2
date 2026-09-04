@@ -72,6 +72,33 @@ export interface DocentTaak {
   gewijzigdOp: string;
 }
 
+/**
+ * Een docent als persoon, herkenbaar aan zijn schoolafkorting.
+ *
+ * Het document-ID in /docenten is de genormaliseerde afkorting: `vis`, niet
+ * `VIS` en niet `Hans Visser`. Zo is een docent met een enkele opvraag te
+ * vinden, en kan hij niet twee keer bestaan doordat iemand zijn naam anders
+ * spelt.
+ *
+ * Nieuw en voorlopig los van de rest: de bestaande koppelingen, memo's en taken
+ * blijven docentEmail gebruiken tot die in een latere stap zijn overgezet. Deze
+ * lijst is er alvast, zodat de afkortingen bekend kunnen zijn voordat er iets
+ * migreert.
+ */
+export interface Docent {
+  /** Document-ID en sleutel. Kleine letters, letters en cijfers, geen spaties. */
+  afkorting: string;
+  naam: string;
+  actief: boolean;
+  /**
+   * Alleen om de overstap mogelijk te maken: hiermee is een bestaande
+   * docentEmail aan een afkorting te koppelen. Verdwijnt zodra dat gebeurd is.
+   */
+  email?: string;
+  aangemaaktOp?: string;
+  gewijzigdOp?: string;
+}
+
 export interface DocentVak {
 
   id?: string;

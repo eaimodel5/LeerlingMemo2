@@ -61,36 +61,40 @@ service cloud.firestore {
 
     match /leerlingen/{doc} {
       allow read: if heeftProfiel();
-      allow write: if isSuperuser();
+      allow write: if isMentorOfHoger();
     }
 
     match /docentenVakken/{doc} {
       allow read: if heeftProfiel();
-      allow write: if isSuperuser();
+      allow write: if isMentorOfHoger();
     }
 
     // ---------- memo's ----------
-    // Een docent maakt en wijzigt alleen memo's die op zijn eigen naam staan.
-    // Verwijderen doet de beheerder, zodat een fout nooit stil data wist.
+    // Een docent maakt en wijzigt memo's op eigen naam.
+    // Een mentor of hoger mag alle memo's inzien, aanpassen en verwijderen.
 
     match /memoTW1TW2/{doc} {
       allow read: if heeftProfiel();
       allow create: if heeftProfiel()
-                    && request.resource.data.docentEmail.lower() == email();
-      allow update: if heeftProfiel()
-                    && resource.data.docentEmail.lower() == email()
-                    && request.resource.data.docentEmail.lower() == email();
-      allow delete: if isSuperuser();
+                    && (isMentorOfHoger() || request.resource.data.docentEmail.lower() == email());
+      allow update: if isMentorOfHoger() || (
+                      heeftProfiel()
+                      && resource.data.docentEmail.lower() == email()
+                      && request.resource.data.docentEmail.lower() == email()
+                    );
+      allow delete: if isMentorOfHoger();
     }
 
     match /memoTW3/{doc} {
       allow read: if heeftProfiel();
       allow create: if heeftProfiel()
-                    && request.resource.data.docentEmail.lower() == email();
-      allow update: if heeftProfiel()
-                    && resource.data.docentEmail.lower() == email()
-                    && request.resource.data.docentEmail.lower() == email();
-      allow delete: if isSuperuser();
+                    && (isMentorOfHoger() || request.resource.data.docentEmail.lower() == email());
+      allow update: if isMentorOfHoger() || (
+                      heeftProfiel()
+                      && resource.data.docentEmail.lower() == email()
+                      && request.resource.data.docentEmail.lower() == email()
+                    );
+      allow delete: if isMentorOfHoger();
     }
 
     // ---------- mentorwerk ----------

@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { LayoutComponent } from './pages/layout.component';
-import { authGuard, superuserGuard } from './services/auth.guard';
+import { authGuard, superuserGuard, mentorOrHigherGuard } from './services/auth.guard';
 
 export const routes: Routes = [
   { path: 'login', loadComponent: () => import('./pages/login.component').then(m => m.LoginComponent) },
@@ -18,8 +18,8 @@ export const routes: Routes = [
       { path: 'mentor-prep', loadComponent: () => import('./pages/mentor-prep.component').then(m => m.MentorPrepComponent), canActivate: [authGuard] },
       { path: 'progress-plan', loadComponent: () => import('./pages/progress-plan.component').then(m => m.ProgressPlanComponent), canActivate: [authGuard] },
       { path: 'magister-export', loadComponent: () => import('./pages/magister-export.component').then(m => m.MagisterExportComponent), canActivate: [authGuard] },
-      { path: 'manage-students', loadComponent: () => import('./pages/manage-students.component').then(m => m.ManageStudentsComponent), canActivate: [superuserGuard] },
-      { path: 'manage-teachers', loadComponent: () => import('./pages/manage-teachers.component').then(m => m.ManageTeachersComponent), canActivate: [superuserGuard] },
+      { path: 'manage-students', loadComponent: () => import('./pages/manage-students.component').then(m => m.ManageStudentsComponent), canActivate: [mentorOrHigherGuard] },
+      { path: 'manage-teachers', loadComponent: () => import('./pages/manage-teachers.component').then(m => m.ManageTeachersComponent), canActivate: [mentorOrHigherGuard] },
       { path: 'superuser', loadComponent: () => import('./pages/superuser.component').then(m => m.SuperuserComponent), canActivate: [superuserGuard] },
       { path: 'handleiding', loadComponent: () => import('./pages/manual.component').then(m => m.ManualComponent), canActivate: [authGuard] },
     ]

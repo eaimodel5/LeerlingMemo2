@@ -1,9 +1,123 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Basic rules for demo
-    match /{document=**} {
-      allow read, write: if true; // DEMO PURPOSES ONLY. Not for production!
+
+    // ---------- HULPFUNCTIES ----------
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function hasValidSession() {
+      return isAuthenticated()
+          && exists(/databases/$(database)/documents/userSessions/$(request.auth.uid));
+    }
+
+    function sessionData() {
+      return get(/databases/$(database)/documents/userSessions/$(request.auth.uid)).data;
+    }
+
+    function userRole() {
+      return sessionData().role;
+    }
+
+    function isSuperuser() {
+      return hasValidSession() && userRole() == 'Superuser';
+    }
+
+    function isCoordinatorOrSuperuser() {
+      return hasValidSession() && (userRole() == 'Coordinator' || userRole() == 'Superuser');
+    }
+
+    function isMentorOfHoger() {
+      return hasValidSession() && (userRole() in ['Mentor', 'Coordinator', 'Superuser']);
+    }
+
+    function isAuthorizedUser() {
+      return hasValidSession() && (userRole() in ['Docent', 'Mentor', 'Coordinator', 'Superuser']);
+    }
+
+    // ---------- TOEGANGSCODES (/codes) ----------
+    match /codes/{codeId} {
+      // Direct opvragen op document-ID is toegestaan voor geverifieerde sessies
+      // zodat loginWithCode de code exact kan valideren
+      allow get: if isAuthenticated();
+      // De volledige lijst met alle codes doorzoeken/inzien mag ALLEEN de Superuser
+      allow list: if isSuperuser();
+      // Codes toevoegen, wijzigen of intrekken is strikt voorbehouden aan de Superuser
+      allow write: if isSuperuser();
+    }
+
+    // ---------- GEBRUIKERSESSIES (/userSessions) ----------
+    match /userSessions/{userId} {
+      // Een gebruiker mag zijn eigen actieve sessie uitlezen
+      allow get: if isAuthenticated() && request.auth.uid == userId;
+
+      // Aanmaken of bijwerken van een sessie mag ALLEEN als de code daadwerkelijk bestaat
+      // in /codes én de toegekende rol exact overeenkomt met de rol in dat code-document.
+      // Hierdoor kan niemand via de browser een valse beheerderrol forceren.
+      allow create, update: if isAuthenticated()
+          && request.auth.uid == userId
+          && request.resource.data.code is string
+          && exists(/databases/$(database)/documents/codes/$(request.resource.data.code))
+          && request.resource.data.role == get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.role;
+
+      // Uitloggen verwijdert de actieve sessie
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+
+      // De beheerder mag sessies inzien of opruimen
+      allow list, delete: if isSuperuser();
+    }
+
+    // ---------- STAMGEGEVENS LEERLINGEN ----------
+    match /leerlingen/{leerlingId} {
+      allow read: if isAuthorizedUser();
+      allow write: if isCoordinatorOrSuperuser();
+    }
+
+    // ---------- DOCENT-VAKKOPPELINGEN ----------
+    match /docentenVakken/{docentVakId} {
+      allow read: if isAuthorizedUser();
+      allow write: if isCoordinatorOrSuperuser();
+    }
+
+    // ---------- KLASSENVERGRENDELING ----------
+    match /classLocks/{lockId} {
+      allow read: if isAuthorizedUser();
+      allow write: if isCoordinatorOrSuperuser();
+    }
+
+    // ---------- MEMO TW1 & TW2 ----------
+    match /memoTW1TW2/{memoId} {
+      allow read: if isAuthorizedUser();
+      allow create, update: if isAuthorizedUser();
+      allow delete: if isCoordinatorOrSuperuser();
+    }
+
+    // ---------- MEMO TW3 ----------
+    match /memoTW3/{memoId} {
+      allow read: if isAuthorizedUser();
+      allow create, update: if isAuthorizedUser();
+      allow delete: if isCoordinatorOrSuperuser();
+    }
+
+    // ---------- MENTORVOORBEREIDING ----------
+    match /mentorVoorbereiding/{prepId} {
+      allow read: if isAuthorizedUser();
+      allow create, update, delete: if isMentorOfHoger();
+    }
+
+    // ---------- VOORTGANGSPLANNEN ----------
+    match /voortgangsplan/{planId} {
+      allow read: if isAuthorizedUser();
+      allow create, update, delete: if isMentorOfHoger();
+    }
+
+    // ---------- DOCENTTAKEN & HERINNERINGEN ----------
+    match /docentTaken/{taakId} {
+      allow read: if isAuthorizedUser();
+      allow create, update, delete: if isAuthorizedUser();
     }
   }
 }

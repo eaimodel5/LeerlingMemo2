@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
@@ -222,6 +222,32 @@ import { wachtOpOpslag, Melding, MELDING_BEVESTIGD, MELDING_WACHT, meldingBijFou
 
         <!-- Right Column: Text Inputs -->
         <div class="lg:col-span-8 flex flex-col gap-4 print:block">
+          @if (bestaandeMemo(); as bm) {
+            <div class="p-3.5 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-blue-900 text-xs shadow-sm print:hidden">
+              <div class="flex items-center gap-2">
+                <mat-icon class="text-blue-600 text-[20px] w-[20px] h-[20px]">history_edu</mat-icon>
+                <div>
+                  <span class="font-bold">Bestaande memo geladen:</span>
+                  <span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border"
+                        [class.bg-emerald-100]="bm.status === 'Definitief'"
+                        [class.text-emerald-800]="bm.status === 'Definitief'"
+                        [class.border-emerald-300]="bm.status === 'Definitief'"
+                        [class.bg-yellow-100]="bm.status === 'Concept'"
+                        [class.text-yellow-800]="bm.status === 'Concept'"
+                        [class.border-yellow-300]="bm.status === 'Concept'">
+                    {{ bm.status }}
+                  </span>
+                  <span class="ml-2 text-slate-500">Laatst opgeslagen door {{ bm.gewijzigdDoor || bm.docentNaam }}</span>
+                </div>
+              </div>
+            </div>
+          } @else if (form.value.leerlingId && form.value.docentVakId) {
+            <div class="p-3 bg-slate-100 border border-slate-200 rounded-xl flex items-center gap-2 text-slate-600 text-xs print:hidden">
+              <mat-icon class="text-slate-500 text-[18px] w-[18px] h-[18px]">add_circle_outline</mat-icon>
+              <span>Nieuwe memo voor deze leerling en dit vak.</span>
+            </div>
+          }
+
           <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm print:shadow-none print:border-slate-300 print:mb-4">
             <label for="waar-textarea" class="block text-xs font-bold text-slate-400 uppercase mb-2 print:text-slate-800">Waar zie je dit concreet aan? *</label>
             <textarea id="waar-textarea" formControlName="waarZieJeDitAan" class="w-full h-24 p-3 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-y min-h-[4rem] print:h-auto print:border-0 print:p-0" placeholder="Beschrijf waarnemingen in de les en bij toetsresultaten..."></textarea>
@@ -295,6 +321,8 @@ export class Memo1Component {
   today = new Date();
   taakId = signal<string | null>(null);
 
+  laatstGeladenSleutel: string | null = null;
+
   constructor() {
     this.route.queryParams.subscribe(params => {
       if (params['taakId']) this.taakId.set(params['taakId']);
@@ -306,6 +334,56 @@ export class Memo1Component {
             if (ll) this.form.patchValue({ leerlingId: ll.id });
           }
         }, 100);
+      }
+    });
+
+    // Zodra leerling en docent/vak geselecteerd zijn: als er al een memo bestaat,
+    // vul het formulier in zodat de docent zijn opgeslagen werk direct ziet en kan wijzigen.
+    // Is er geen bestaande memo, dan wordt het formulier leeggemaakt voor een schone invoer.
+    effect(() => {
+      const memo = this.bestaandeMemo();
+      const vals = this.formValues();
+      const leerlingId = vals.leerlingId;
+      const docentVakId = vals.docentVakId;
+
+      if (!leerlingId || !docentVakId) return;
+
+      const sleutel = `${leerlingId}|${docentVakId}|${memo?.id ?? 'nieuw'}`;
+      if (sleutel === this.laatstGeladenSleutel) return;
+      this.laatstGeladenSleutel = sleutel;
+
+      if (memo) {
+        this.form.patchValue({
+          aandachtInhoudelijkBegrip: !!memo.aandachtInhoudelijkBegrip,
+          aandachtPlanningOrganisatie: !!memo.aandachtPlanningOrganisatie,
+          aandachtToetsvoorbereidingLeerstrategie: !!memo.aandachtToetsvoorbereidingLeerstrategie,
+          aandachtInzetWerkhouding: !!memo.aandachtInzetWerkhouding,
+          aandachtWerkNietOpOrde: !!memo.aandachtWerkNietOpOrde,
+          aandachtAanwezigheidVerzuim: !!memo.aandachtAanwezigheidVerzuim,
+          waarZieJeDitAan: memo.waarZieJeDitAan || '',
+          watWerktWel: memo.watWerktWel || '',
+          leerlingActie: memo.leerlingActie || '',
+          docentActie: memo.docentActie || '',
+          emc: memo.emc || 'Nee',
+          status: memo.status || 'Concept',
+          reflectieOpVorigePeriode: memo.reflectieOpVorigePeriode || ''
+        }, { emitEvent: false });
+      } else {
+        this.form.patchValue({
+          aandachtInhoudelijkBegrip: false,
+          aandachtPlanningOrganisatie: false,
+          aandachtToetsvoorbereidingLeerstrategie: false,
+          aandachtInzetWerkhouding: false,
+          aandachtWerkNietOpOrde: false,
+          aandachtAanwezigheidVerzuim: false,
+          waarZieJeDitAan: '',
+          watWerktWel: '',
+          leerlingActie: '',
+          docentActie: '',
+          emc: 'Nee',
+          status: 'Concept',
+          reflectieOpVorigePeriode: ''
+        }, { emitEvent: false });
       }
     });
   }
@@ -502,6 +580,47 @@ export class Memo1Component {
       dv.actief && dv.schooljaar === '2026-2027' && dv.klas === klas && zelfdeEmail(dv.docentEmail, gebruiker.email));
   });
 
+  bestaandeMemo = computed(() => {
+    const vals = this.formValues();
+    const leerlingId = vals.leerlingId;
+    const docentVakId = vals.docentVakId;
+    if (!leerlingId || !docentVakId) return null;
+
+    const leerling = this.dataService.leerlingen().find(l => l.id === leerlingId);
+    if (!leerling) return null;
+
+    let docentEmail = '';
+    let docentNaam = '';
+    let vak = '';
+
+    if (docentVakId === 'custom') {
+      docentNaam = vals.customDocentNaam || this.authService.currentUser()?.name || '';
+      vak = vals.customVak || this.authService.currentUser()?.vak || '';
+      docentEmail = this.authService.currentUser()?.email || '';
+    } else {
+      const dv = this.dataService.docentVakken().find(d => d.id === docentVakId);
+      if (!dv) return null;
+      docentNaam = dv.docentNaam;
+      docentEmail = dv.docentEmail;
+      vak = dv.vak;
+    }
+
+    if (!vak) return null;
+
+    const zelfdeDocent = (m: { docentEmail?: string; docentNaam?: string }) =>
+      docentEmail
+        ? zelfdeEmail(m.docentEmail, docentEmail)
+        : (m.docentNaam || '').trim().toLowerCase() === docentNaam.trim().toLowerCase();
+
+    return this.dataService.memoTW1TW2().find(m =>
+      m.schooljaar === (vals.schooljaar || '2026-2027') &&
+      m.toetsweek === 'TW1' &&
+      m.leerlingnummer === leerling.leerlingnummer &&
+      m.vak.trim().toLowerCase() === vak.trim().toLowerCase() &&
+      zelfdeDocent(m)
+    ) ?? null;
+  });
+
   isLocked = computed(() => {
     const klas = this.formValues().klas;
     const periode = this.formValues().toetsweek;
@@ -653,15 +772,22 @@ export class Memo1Component {
 
       const uitkomst = await wachtOpOpslag(opslaan);
 
-      if (this.taakId()) {
-        const taak = this.dataService.docentTaken().find(t => t.id === this.taakId());
-        if (taak) {
-          await wachtOpOpslag(this.dataService.saveDocentTaak({
-            ...taak,
-            status: 'Ingevuld',
-            gewijzigdOp: new Date().toISOString()
-          }));
-        }
+      const passendeTaak = this.taakId()
+        ? this.dataService.docentTaken().find(t => t.id === this.taakId())
+        : this.dataService.docentTaken().find(t =>
+            t.leerlingnummer === memoData.leerlingnummer &&
+            t.periode === 'TW1' &&
+            t.schooljaar === memoData.schooljaar &&
+            t.vak.trim().toLowerCase() === memoData.vak.trim().toLowerCase() &&
+            docentEmail && zelfdeEmail(t.docentEmail, docentEmail)
+          );
+
+      if (passendeTaak?.id) {
+        await wachtOpOpslag(this.dataService.saveDocentTaak({
+          ...passendeTaak,
+          status: 'Ingevuld',
+          gewijzigdOp: new Date().toISOString()
+        }));
       }
 
       if (uitkomst === 'bevestigd') {

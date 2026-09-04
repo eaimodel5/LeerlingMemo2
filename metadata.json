@@ -1,6 +1,6 @@
 {
   "name": "LeerlingMemo2",
-  "description": "",
+  "description": "Applicatie voor docenten- en mentormemo's, leerlingvoorbereiding en rapportvergaderingen",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

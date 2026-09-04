@@ -147,13 +147,9 @@ export class DataService {
     this.verbindingsfout.set(leesbareMelding(error));
   }
 
-  private generateId(): string {
-    // randomUUID waar beschikbaar; Math.random gaf ~60 bits en is niet bedoeld
-    // om unieke sleutels mee te maken.
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return crypto.randomUUID();
-    }
-    return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+  private generateId(collectionName: string = 'ids'): string {
+    // Native Firestore collision-safe 20-karakter ID generatie
+    return doc(collection(db, collectionName)).id;
   }
 
   /**
@@ -171,7 +167,7 @@ export class DataService {
     for (let start = 0; start < items.length; start += BUNDEL) {
       const batch = writeBatch(db);
       for (const item of items.slice(start, start + BUNDEL)) {
-        const id = item.id ?? this.generateId();
+        const id = item.id ?? this.generateId(collectionName);
         // merge zodat bij het bijwerken velden blijven staan die niet in de CSV zitten.
         batch.set(doc(db, collectionName, id), { ...item.data, id }, { merge: true });
       }
@@ -194,11 +190,15 @@ export class DataService {
   }
 
   // --- Leerlingen ---
-  async addLeerling(item: Omit<Leerling, 'id'>) {
+  async addLeerling(item: Omit<Leerling, 'id'>): Promise<string> {
     try {
-      const id = this.generateId();
+      const id = this.generateId('leerlingen');
       await setDoc(doc(db, 'leerlingen', id), { ...item, id });
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'leerlingen'); }
+      return id;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'leerlingen');
+      throw e;
+    }
   }
 
   async updateLeerling(id: string, updates: Partial<Leerling>) {
@@ -228,11 +228,15 @@ export class DataService {
   }
 
   // --- DocentenVakken ---
-  async addDocentVak(item: Omit<DocentVak, 'id'>) {
+  async addDocentVak(item: Omit<DocentVak, 'id'>): Promise<string> {
     try {
-      const id = this.generateId();
+      const id = this.generateId('docentenVakken');
       await setDoc(doc(db, 'docentenVakken', id), { ...item, id });
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'docentenVakken'); }
+      return id;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'docentenVakken');
+      throw e;
+    }
   }
 
   async updateDocentVak(id: string, updates: Partial<DocentVak>) {
@@ -248,6 +252,12 @@ export class DataService {
     } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'docentenVakken'); }
   }
 
+  async bulkDeleteDocentVakken(ids: string[]) {
+    try {
+      await this.bulkDelete('docentenVakken', ids);
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'docentenVakken'); }
+  }
+
   /** Slaat een hele docenten-/vakkenlijst in één keer op. */
   async bulkSaveDocentVakken(items: { id?: string; data: Omit<DocentVak, 'id'> }[]) {
     try {
@@ -256,11 +266,15 @@ export class DataService {
   }
 
   // --- Memos TW1/TW2 ---
-  async addMemoTW1TW2(item: Omit<MemoTW1TW2, 'id'>) {
+  async addMemoTW1TW2(item: Omit<MemoTW1TW2, 'id'>): Promise<string> {
     try {
-      const id = this.generateId();
+      const id = this.generateId('memoTW1TW2');
       await setDoc(doc(db, 'memoTW1TW2', id), { ...item, id });
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'memoTW1TW2'); }
+      return id;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'memoTW1TW2');
+      throw e;
+    }
   }
 
   async updateMemoTW1TW2(id: string, updates: Partial<MemoTW1TW2>) {
@@ -269,18 +283,62 @@ export class DataService {
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'memoTW1TW2'); }
   }
 
-  // --- Memos TW3 ---
-  async addMemoTW3(item: Omit<MemoTW3, 'id'>) {
+  async deleteMemoTW1TW2(id: string) {
     try {
-      const id = this.generateId();
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'memoTW1TW2', id));
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'memoTW1TW2'); }
+  }
+
+  async bulkDeleteMemoTW1TW2(ids: string[]) {
+    try {
+      await this.bulkDelete('memoTW1TW2', ids);
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'memoTW1TW2'); }
+  }
+
+  // --- Memos TW3 ---
+  async addMemoTW3(item: Omit<MemoTW3, 'id'>): Promise<string> {
+    try {
+      const id = this.generateId('memoTW3');
       await setDoc(doc(db, 'memoTW3', id), { ...item, id });
-    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'memoTW3'); }
+      return id;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'memoTW3');
+      throw e;
+    }
   }
 
   async updateMemoTW3(id: string, updates: Partial<MemoTW3>) {
     try {
       await setDoc(doc(db, 'memoTW3', id), updates, { merge: true });
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'memoTW3'); }
+  }
+
+  async deleteMemoTW3(id: string) {
+    try {
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'memoTW3', id));
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'memoTW3'); }
+  }
+
+  async bulkDeleteMemoTW3(ids: string[]) {
+    try {
+      await this.bulkDelete('memoTW3', ids);
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'memoTW3'); }
+  }
+
+  // --- Access Codes ---
+  async deleteCode(id: string) {
+    try {
+      const { deleteDoc } = await import('firebase/firestore');
+      await deleteDoc(doc(db, 'codes', id));
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'codes'); }
+  }
+
+  async bulkDeleteCodes(ids: string[]) {
+    try {
+      await this.bulkDelete('codes', ids);
+    } catch (e) { handleFirestoreError(e, OperationType.DELETE, 'codes'); }
   }
 
   // --- Mentor Voorbereiding ---
@@ -295,7 +353,7 @@ export class DataService {
       if (existing && existing.id) {
         await setDoc(doc(db, 'mentorVoorbereiding', existing.id), item, { merge: true });
       } else {
-        const id = this.generateId();
+        const id = this.generateId('mentorVoorbereiding');
         await setDoc(doc(db, 'mentorVoorbereiding', id), { ...item, id });
       }
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'mentorVoorbereiding'); }
@@ -313,7 +371,7 @@ export class DataService {
       if (existing && existing.id) {
         await setDoc(doc(db, 'voortgangsplan', existing.id), item, { merge: true });
       } else {
-        const id = this.generateId();
+        const id = this.generateId('voortgangsplan');
         await setDoc(doc(db, 'voortgangsplan', id), { ...item, id });
       }
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'voortgangsplan'); }
@@ -337,9 +395,10 @@ export class DataService {
   // --- Docent Taken ---
   async saveDocentTaak(item: Partial<DocentTaak> & { leerlingnummer: string, docentEmail: string, periode: string, schooljaar: string }) {
     try {
+      const email = item.docentEmail.trim().toLowerCase();
       const existing = this.docentTaken().find(i => 
         i.leerlingnummer === item.leerlingnummer && 
-        i.docentEmail === item.docentEmail &&
+        i.docentEmail.trim().toLowerCase() === email &&
         i.periode === item.periode && 
         i.schooljaar === item.schooljaar
       );
@@ -347,7 +406,7 @@ export class DataService {
       if (existing && existing.id) {
         await setDoc(doc(db, 'docentTaken', existing.id), item, { merge: true });
       } else {
-        const id = this.generateId();
+        const id = this.generateId('docentTaken');
         await setDoc(doc(db, 'docentTaken', id), { ...item, id });
       }
     } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'docentTaken'); }

@@ -90,12 +90,32 @@
         "used": { "type": "boolean" }
       },
       "required": ["code", "role", "ownerName", "ownerEmail", "createdAt"]
+    },
+    "UserSession": {
+      "title": "UserSession",
+      "description": "Active session bound to Firebase Auth anonymous UID",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "code": { "type": "string" },
+        "role": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "vak": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "code", "role", "ownerName", "ownerEmail", "createdAt"]
     }
   },
   "firestore": {
     "/codes/{codeId}": {
       "schema": { "$ref": "#/entities/AccessCode" },
       "description": "Login codes"
+    },
+    "/userSessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/UserSession" },
+      "description": "Active user sessions"
     },
     "/leerlingen/{leerlingId}": {
       "schema": { "$ref": "#/entities/Leerling" },
@@ -104,6 +124,10 @@
     "/docentenVakken/{docentVakId}": {
       "schema": { "$ref": "#/entities/DocentVak" },
       "description": "Teacher Subject mappings"
+    },
+    "/classLocks/{lockId}": {
+      "schema": { "$ref": "#/entities/ClassLock" },
+      "description": "Class locks"
     },
     "/memoTW1TW2/{memoId}": {
       "schema": { "$ref": "#/entities/Memo" },
@@ -120,6 +144,10 @@
     "/voortgangsplan/{planId}": {
       "schema": { "$ref": "#/entities/Voortgangsplan" },
       "description": "Progress plans"
+    },
+    "/docentTaken/{taakId}": {
+      "schema": { "$ref": "#/entities/DocentTaak" },
+      "description": "Teacher tasks"
     }
   }
 }

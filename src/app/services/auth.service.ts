@@ -16,6 +16,7 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   vak?: string;
+  code?: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -85,7 +86,8 @@ export class AuthService {
           name: data.ownerName,
           email: data.ownerEmail,
           role: data.role,
-          vak: data.vak
+          vak: data.vak,
+          code: data.code
         };
         this.setUser(user);
         return true;

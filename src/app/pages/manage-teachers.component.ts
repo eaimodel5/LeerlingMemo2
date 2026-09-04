@@ -320,15 +320,20 @@ export class ManageTeachersComponent {
     this.showForm.set(true);
   }
 
-  deleteAllTeachers() {
-    if (confirm('Weet je zeker dat je ALLE docenten in deze lijst wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
-      const teachers = this.filteredDocentVakken();
-      for (const t of teachers) {
-        if (t.id) {
-          this.dataService.deleteDocentVak(t.id);
-        }
+  async deleteAllTeachers() {
+    const teachers = this.filteredDocentVakken();
+    if (teachers.length === 0) return;
+    if (confirm(`Weet je zeker dat je ${teachers.length} docent-koppelingen wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`)) {
+      const ids = teachers.map(t => t.id).filter((id): id is string => !!id);
+      this.bezig.set(true);
+      try {
+        await this.dataService.bulkDeleteDocentVakken(ids);
+        alert(`${ids.length} docent-koppelingen succesvol verwijderd.`);
+      } catch {
+        alert('Er ging iets mis bij het verwijderen van de koppelingen.');
+      } finally {
+        this.bezig.set(false);
       }
-      alert(`${teachers.length} docent-koppelingen succesvol verwijderd.`);
     }
   }
 

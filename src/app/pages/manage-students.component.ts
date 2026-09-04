@@ -95,6 +95,9 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
                     <button (click)="edit(l)" class="text-blue-600 hover:text-blue-800 transition-colors ml-2 mr-2" title="Bewerk">
                       <mat-icon class="text-[20px] w-[20px] h-[20px]">edit</mat-icon>
                     </button>
+                    <button (click)="deleteItem(l)" class="text-red-500 hover:text-red-700 transition-colors ml-1" title="Verwijder">
+                      <mat-icon class="text-[20px] w-[20px] h-[20px]">delete</mat-icon>
+                    </button>
                   </td>
                 </tr>
               }
@@ -386,6 +389,21 @@ export class ManageStudentsComponent {
       alert(`${ids.length} leerlingen verwijderd.`);
     } catch {
       alert('Er ging iets mis bij het verwijderen. Mogelijk is maar een deel verwijderd.');
+    } finally {
+      this.bezig.set(false);
+    }
+  }
+
+  async deleteItem(item: any) {
+    if (!item?.id) return;
+    if (!confirm(`Weet je zeker dat je leerling "${item.leerling}" (${item.leerlingnummer}) wilt verwijderen?`)) {
+      return;
+    }
+    this.bezig.set(true);
+    try {
+      await this.dataService.deleteLeerling(item.id);
+    } catch {
+      alert('Er ging iets mis bij het verwijderen van deze leerling.');
     } finally {
       this.bezig.set(false);
     }

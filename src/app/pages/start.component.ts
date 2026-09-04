@@ -113,6 +113,14 @@ import { AuthService } from '../services/auth.service';
               <h4 class="text-sm font-bold text-slate-800 mb-1">Docenten & Vakken</h4>
               <p class="text-xs text-slate-500 leading-relaxed max-w-[200px]">Koppel docenten/vakken aan klassen.</p>
             </a>
+
+            <a routerLink="/superuser" class="group flex flex-col p-6 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-purple-300 hover:shadow-md hover:-translate-y-1 transition-all duration-200">
+              <div class="h-12 w-12 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center mb-4 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                <mat-icon>vpn_key</mat-icon>
+              </div>
+              <h4 class="text-sm font-bold text-slate-800 mb-1">Toegangscodes & Superuser</h4>
+              <p class="text-xs text-slate-500 leading-relaxed max-w-[200px]">Beheer inlogcodes en bekijk de actieve superuser-code.</p>
+            </a>
           }
 
         </div>

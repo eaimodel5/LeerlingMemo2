@@ -159,11 +159,11 @@ describe('Docenten: wie mist er nog een afkorting', () => {
     expect(ontbreekt.find(o => o.naam === DOCENT.naam)?.aantalKoppelingen).toBe(2);
   });
 
-  it('laat een docent weg zodra die op e-mailadres bekend is', async () => {
+  it('laat een docent weg zodra de naam bekend is', async () => {
     const { component } = await maakOmgeving(ManageDocentenComponent, {
       rol: 'Mentor',
       vul: d => {
-        d.docenten.set([maakDocent({ afkorting: 'vis', email: DOCENT.email })]);
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: DOCENT.naam })]);
         d.docentVakken.set([maakDocentVak()]);
       },
     });
@@ -171,18 +171,38 @@ describe('Docenten: wie mist er nog een afkorting', () => {
     expect(component.zonderAfkorting()).toHaveLength(0);
   });
 
-  it('laat een docent ook weg als alleen de naam overeenkomt', async () => {
-    // Niet elke koppeling heeft een e-mailadres; dat is een van de redenen om
-    // van adressen af te willen.
+  it('werkt ook bij een koppeling zonder e-mailadres', async () => {
+    // Niet elke koppeling heeft er een; dat is een van de redenen om van
+    // adressen af te willen.
     const { component } = await maakOmgeving(ManageDocentenComponent, {
       rol: 'Mentor',
-      vul: d => {
-        d.docenten.set([maakDocent({ afkorting: 'vis', naam: DOCENT.naam, email: undefined })]);
-        d.docentVakken.set([maakDocentVak({ docentEmail: '' })]);
-      },
+      vul: d => d.docentVakken.set([maakDocentVak({ docentEmail: '' })]),
     });
 
-    expect(component.zonderAfkorting()).toHaveLength(0);
+    const ontbreekt = component.zonderAfkorting();
+    expect(ontbreekt).toHaveLength(1);
+    expect(ontbreekt[0].naam).toBe(DOCENT.naam);
+    expect(ontbreekt[0].legacyEmail).toBe('');
+  });
+
+  it('toont het legacyadres wel, maar slaat het niet op', async () => {
+    const { component, data, ververs } = await maakOmgeving(ManageDocentenComponent, {
+      rol: 'Mentor',
+      vul: d => d.docentVakken.set([maakDocentVak()]),
+    });
+
+    // Zichtbaar in de lijst, zodat de beheerder weet om wie het gaat.
+    expect(component.zonderAfkorting()[0].legacyEmail).toBe(DOCENT.email);
+
+    component.nieuwVoor(component.zonderAfkorting()[0]);
+    component.zetVeld('afkorting', 'vis');
+    await ververs();
+    await component.bewaar();
+    await ververs();
+
+    // Maar het staat niet in het opgeslagen docentrecord.
+    expect(data.docenten()).toHaveLength(1);
+    expect(Object.keys(data.docenten()[0])).not.toContain('email');
   });
 
   it('raadt geen afkorting bij het voorvullen', async () => {
@@ -197,17 +217,16 @@ describe('Docenten: wie mist er nog een afkorting', () => {
 
     expect(component.formulier()?.afkorting).toBe('');
     expect(component.formulier()?.naam).toBe(DOCENT.naam);
-    expect(component.formulier()?.email).toBe(DOCENT.email);
   });
 });
 
 describe('Docenten: CSV-import', () => {
-  const kop = 'afkorting;naam;email;actief\n';
+  const kop = 'afkorting;naam;actief\n';
 
   it('leest de rijen in', async () => {
     const { component, data, ververs } = await maakOmgeving(ManageDocentenComponent, { rol: 'Mentor' });
 
-    await component.verwerkImport(kop + 'VIS;Hans Visser;visser@school.nl;ja\njns;Jansen;jansen@school.nl;nee\n');
+    await component.verwerkImport(kop + 'VIS;Hans Visser;ja\njns;Jansen;nee\n');
     await ververs();
 
     expect(data.docenten().map(d => d.afkorting).sort()).toEqual(['jns', 'vis']);
@@ -219,7 +238,7 @@ describe('Docenten: CSV-import', () => {
     // negenenveertig tegenhoudt.
     const { component, data, ververs } = await maakOmgeving(ManageDocentenComponent, { rol: 'Mentor' });
 
-    await component.verwerkImport(kop + 'v is;Kapotte afkorting;;ja\nvis;Hans Visser;;ja\n;Geen afkorting;;ja\n');
+    await component.verwerkImport(kop + 'v is;Kapotte afkorting;ja\nvis;Hans Visser;ja\n;Geen afkorting;ja\n');
     await ververs();
 
     expect(data.docenten().map(d => d.afkorting)).toEqual(['vis']);
@@ -230,7 +249,7 @@ describe('Docenten: CSV-import', () => {
   it('slaat een dubbele afkorting binnen hetzelfde bestand over', async () => {
     const { component, data, ververs } = await maakOmgeving(ManageDocentenComponent, { rol: 'Mentor' });
 
-    await component.verwerkImport(kop + 'vis;Hans Visser;;ja\nVIS;Nog een Visser;;ja\n');
+    await component.verwerkImport(kop + 'vis;Hans Visser;ja\nVIS;Nog een Visser;ja\n');
     await ververs();
 
     expect(data.docenten()).toHaveLength(1);
@@ -243,11 +262,23 @@ describe('Docenten: CSV-import', () => {
       vul: d => d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Oude naam' })]),
     });
 
-    await component.verwerkImport(kop + 'vis;Hans Visser;;ja\n');
+    await component.verwerkImport(kop + 'vis;Hans Visser;ja\n');
     await ververs();
 
     expect(data.docenten()).toHaveLength(1);
     expect(data.docenten()[0].naam).toBe('Hans Visser');
+  });
+
+  it('negeert een e-mailkolom in het bestand', async () => {
+    // Oude sjablonen kunnen hem nog bevatten; dat mag de import niet ophouden,
+    // maar het adres hoort niet in het nieuwe docentrecord terecht te komen.
+    const { component, data, ververs } = await maakOmgeving(ManageDocentenComponent, { rol: 'Mentor' });
+
+    await component.verwerkImport('afkorting;naam;email;actief\nvis;Hans Visser;visser@school.nl;ja\n');
+    await ververs();
+
+    expect(data.docenten()).toHaveLength(1);
+    expect(Object.keys(data.docenten()[0])).not.toContain('email');
   });
 
   it('klaagt over een ontbrekende kopregel', async () => {

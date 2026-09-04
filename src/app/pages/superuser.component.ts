@@ -1,4 +1,4 @@
-import { Component, signal, computed, inject } from '@angular/core';
+import { Component, OnDestroy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AccessCode, UserRole } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
@@ -494,7 +494,7 @@ import { AuthService } from '../services/auth.service';
     </div>
   `
 })
-export class SuperuserComponent {
+export class SuperuserComponent implements OnDestroy {
   auth = inject(AuthService);
   codes = signal<AccessCode[]>([]);
   searchQuery = signal('');
@@ -731,10 +731,29 @@ export class SuperuserComponent {
     this.showCreate.set(true);
   }
 
+  /**
+   * Stopt de luisteraar op /codes zodra het scherm weg is.
+   *
+   * Bleef eerder draaien nadat je van dit scherm wegnavigeerde. Bij het
+   * uitloggen verdwijnt het sessiedocument en weigeren de regels de collectie;
+   * de luisteraar meldde dat dan als fout in de console van een scherm dat niet
+   * eens meer open stond.
+   */
+  private stopCodesLuisteraar: (() => void) | null = null;
+
   constructor() {
-    onSnapshot(query(collection(db, 'codes'), orderBy('createdAt', 'desc')), (snapshot) => {
-      this.codes.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AccessCode)));
-    });
+    this.stopCodesLuisteraar = onSnapshot(
+      query(collection(db, 'codes'), orderBy('createdAt', 'desc')),
+      (snapshot) => {
+        this.codes.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AccessCode)));
+      },
+      (error) => console.error('Luisteraar op codes gaf een fout:', error),
+    );
+  }
+
+  ngOnDestroy() {
+    this.stopCodesLuisteraar?.();
+    this.stopCodesLuisteraar = null;
   }
 
   copyCode(code: string) {

@@ -161,3 +161,44 @@ plaats van met "ongeldige code".
 De aanmelding staat in `sessionStorage`, dus elk tabblad krijgt een eigen `uid` en
 daarmee een eigen rol. Op een gedeelde computer kan de ene collega als docent inloggen
 terwijl de andere in een tweede tabblad als mentor werkt.
+
+
+---
+
+## Wie mag wat
+
+Deze tabel staat op drie plekken en die drie horen gelijk te zijn:
+`firestore.rules` (wat de database afdwingt), `src/app/services/rechten.ts` (wat
+de schermen tonen) en `rechten.spec.ts` (wat de tests bewaken).
+
+| Handeling | Docent | Mentor | Coordinator | Superuser |
+|---|:--:|:--:|:--:|:--:|
+| Memo invullen en bijwerken | * | * | * | * |
+| Memo van een vakdocent verwijderen | | * | * | * |
+| Voorbereiding en voortgangsplan | | * | * | * |
+| Mentoroverzicht en Magister-export | | * | * | * |
+| Klas op slot zetten | | * | * | * |
+| Leerlingen toevoegen, bewerken, importeren | | * | * | * |
+| Leerlingen verwijderen en de lijst wissen | | | * | * |
+| Docent-vakkoppelingen beheren | | * | * | * |
+| De hele docentenlijst wissen | | | * | * |
+| Beheerdersoverzicht, toegangscodes | | | | * |
+
+Twee soorten fouten die deze opzet moet voorkomen, en die allebei voorkwamen:
+
+- **Een knop die zichtbaar is maar geweigerd wordt.** De prullenbak in het
+  memopaneel stond zonder rolcontrole in het sjabloon, terwijl de regel op
+  coordinator stond. De mentor kreeg dus een foutmelding bij iets wat hij hoort
+  te mogen.
+- **Een scherm dat verborgen is in het menu maar via de URL opengaat.**
+  `/mentor-prep`, `/mentor-overview`, `/progress-plan` en `/magister-export`
+  stonden op een guard die alleen controleerde of je bent ingelogd. Het menu
+  verborg de links voor een vakdocent, maar wie de URL intypte kwam er gewoon
+  in - en de leesregels laten elke rol alle memo's zien.
+
+### De regels moeten opnieuw gepubliceerd worden
+
+De aanpassingen in `firestore.rules` gelden pas als je ze publiceert:
+Firebase-console -> Firestore Database -> **Rules** -> inhoud van
+`firestore.rules` erin plakken -> **Publish**. Tot dat moment weigert de
+database nog steeds het verwijderen van een memo door een mentor.

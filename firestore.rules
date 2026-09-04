@@ -73,33 +73,43 @@ service cloud.firestore {
     // ---------- STAMGEGEVENS LEERLINGEN ----------
     match /leerlingen/{leerlingId} {
       allow read: if isAuthorizedUser();
-      allow write: if isCoordinatorOrSuperuser();
+      // Een mentor moet docenten en de mentor aan een leerling kunnen koppelen;
+      // dat is dagelijks werk en hoort niet bij de beheerder te liggen.
+      allow create, update: if isMentorOfHoger();
+      // Verwijderen blijft bij de coordinator: dat is onomkeerbaar en raakt
+      // ook de memo's die aan die leerling hangen.
+      allow delete: if isCoordinatorOrSuperuser();
     }
 
     // ---------- DOCENT-VAKKOPPELINGEN ----------
     match /docentenVakken/{docentVakId} {
       allow read: if isAuthorizedUser();
-      allow write: if isCoordinatorOrSuperuser();
+      // De koppeling docent-vak-klas is waar de takenlijst en het
+      // mentoroverzicht op steunen. Een mentor moet die zelf kunnen leggen.
+      allow write: if isMentorOfHoger();
     }
 
     // ---------- KLASSENVERGRENDELING ----------
     match /classLocks/{lockId} {
       allow read: if isAuthorizedUser();
-      allow write: if isCoordinatorOrSuperuser();
+      // "Sluit invoer" is een handeling van de mentor van die klas.
+      allow write: if isMentorOfHoger();
     }
 
     // ---------- MEMO TW1 & TW2 ----------
     match /memoTW1TW2/{memoId} {
       allow read: if isAuthorizedUser();
       allow create, update: if isAuthorizedUser();
-      allow delete: if isCoordinatorOrSuperuser();
+      // De mentor mag memo's van vakdocenten inzien, aanpassen en verwijderen;
+      // dat is de bedoeling van het memopaneel in de voorbereiding.
+      allow delete: if isMentorOfHoger();
     }
 
     // ---------- MEMO TW3 ----------
     match /memoTW3/{memoId} {
       allow read: if isAuthorizedUser();
       allow create, update: if isAuthorizedUser();
-      allow delete: if isCoordinatorOrSuperuser();
+      allow delete: if isMentorOfHoger();
     }
 
     // ---------- MENTORVOORBEREIDING ----------

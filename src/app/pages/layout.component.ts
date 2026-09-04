@@ -97,6 +97,11 @@ import { CommonModule } from '@angular/common';
 
           @if (auth.hasRole('Superuser')) {
             <div class="px-6 py-2 mt-4 text-[10px] font-bold text-[#5c7bb0] uppercase tracking-wider mb-1 text-center group-hover:text-left transition-all">Systeembeheer</div>
+            <a routerLink="/beheer" routerLinkActive="bg-[#152a4f] text-[#e87700] !border-l-[#e87700]"
+               class="flex items-center px-6 py-3 hover:bg-[#152a4f] text-slate-300 transition-all border-l-4 border-transparent min-w-max" title="Overzicht">
+              <mat-icon class="mr-6 shrink-0 text-[#5c7bb0]">dashboard</mat-icon>
+              <span class="opacity-0 group-hover:opacity-100 transition-opacity duration-300">Overzicht</span>
+            </a>
             <a routerLink="/superuser" routerLinkActive="bg-[#152a4f] text-[#e87700] !border-l-[#e87700]"
                class="flex items-center px-6 py-3 hover:bg-[#152a4f] text-slate-300 transition-all border-l-4 border-transparent min-w-max" title="Codes Beheren">
               <mat-icon class="mr-6 shrink-0 text-[#5c7bb0]">vpn_key</mat-icon>

@@ -20,6 +20,7 @@ export const routes: Routes = [
       { path: 'magister-export', loadComponent: () => import('./pages/magister-export.component').then(m => m.MagisterExportComponent), canActivate: [authGuard] },
       { path: 'manage-students', loadComponent: () => import('./pages/manage-students.component').then(m => m.ManageStudentsComponent), canActivate: [mentorOrHigherGuard] },
       { path: 'manage-teachers', loadComponent: () => import('./pages/manage-teachers.component').then(m => m.ManageTeachersComponent), canActivate: [mentorOrHigherGuard] },
+      { path: 'beheer', loadComponent: () => import('./pages/beheer-dashboard.component').then(m => m.BeheerDashboardComponent), canActivate: [superuserGuard] },
       { path: 'superuser', loadComponent: () => import('./pages/superuser.component').then(m => m.SuperuserComponent), canActivate: [superuserGuard] },
       { path: 'handleiding', loadComponent: () => import('./pages/manual.component').then(m => m.ManualComponent), canActivate: [authGuard] },
     ]

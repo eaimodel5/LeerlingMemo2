@@ -9,13 +9,33 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function hasValidSession() {
-      return isAuthenticated()
-          && exists(/databases/$(database)/documents/userSessions/$(request.auth.uid));
-    }
-
     function sessionData() {
       return get(/databases/$(database)/documents/userSessions/$(request.auth.uid)).data;
+    }
+
+    function codeVanSessie() {
+      return get(/databases/$(database)/documents/codes/$(sessionData().code)).data;
+    }
+
+    // Een code die is ingetrokken heeft active == false. Codes van voor die
+    // wijziging hebben het veld niet; die gelden als actief, anders zou het
+    // publiceren van deze regels iedereen in een klap buitensluiten.
+    function codeIsActief() {
+      return codeVanSessie().active != false && codeVanSessie().used != true;
+    }
+
+    // Geldig zijn is meer dan 'er is een sessiedocument'. De sessie moet
+    // verwijzen naar een code die nog bestaat en nog actief is, en de rol in de
+    // sessie moet nog steeds de rol van die code zijn. Zonder die laatste twee
+    // controles bleef iemand die al was ingelogd gewoon doorwerken nadat zijn
+    // code was ingetrokken -- de sessie was immers al geschreven.
+    function hasValidSession() {
+      return isAuthenticated()
+          && exists(/databases/$(database)/documents/userSessions/$(request.auth.uid))
+          && sessionData().code is string
+          && exists(/databases/$(database)/documents/codes/$(sessionData().code))
+          && codeIsActief()
+          && sessionData().role == codeVanSessie().role;
     }
 
     function userRole() {
@@ -61,7 +81,10 @@ service cloud.firestore {
           && request.auth.uid == userId
           && request.resource.data.code is string
           && exists(/databases/$(database)/documents/codes/$(request.resource.data.code))
-          && request.resource.data.role == get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.role;
+          && request.resource.data.role == get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.role
+          // Met een ingetrokken code begin je geen nieuwe sessie.
+          && get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.active != false
+          && get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.used != true;
 
       // Uitloggen verwijdert de actieve sessie
       allow delete: if isAuthenticated() && request.auth.uid == userId;

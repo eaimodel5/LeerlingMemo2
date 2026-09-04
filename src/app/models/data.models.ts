@@ -19,6 +19,22 @@ export interface AccessCode {
   ownerEmail: string;
   vak?: string;
   createdAt: string;
+  /**
+   * Of de code nog gebruikt mag worden. Nieuwe codes krijgen `true`.
+   *
+   * Optioneel omdat codes van voor deze wijziging het veld niet hebben; die
+   * gelden als actief (zie `utils/toegangscode.ts`). Intrekken zet hem op
+   * `false` en is omkeerbaar -- verwijderen is dat niet, en dan is ook niet
+   * meer te zien dat de code ooit bestaan heeft.
+   */
+  active?: boolean;
+  /** Wanneer de code is ingetrokken of weer aangezet. */
+  gewijzigdOp?: string;
+  /**
+   * Ongebruikt overblijfsel: dit veld werd nooit op `true` gezet. Blijft in het
+   * model staan zodat bestaande documenten geldig zijn, en telt voor de
+   * zekerheid mee als 'ingetrokken'.
+   */
   used?: boolean;
 }
 

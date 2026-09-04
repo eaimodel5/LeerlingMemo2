@@ -212,6 +212,7 @@ export function maakCode(over: Partial<AccessCode> = {}): AccessCode {
     ownerName: DOCENT.naam,
     ownerEmail: DOCENT.email,
     createdAt: NU,
+    active: true,
     used: false,
     ...over,
   };

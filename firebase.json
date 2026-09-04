@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-leerlingmemo2-ab5a5fba-336c-4c85-adfe-1693e9d2d30c",
+      "rules": "firestore.rules"
+    }
+  ]
+}

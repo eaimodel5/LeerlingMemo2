@@ -6,6 +6,14 @@ import { parseCsv, downloadCsv, headersMatch } from '../utils/csv';
 import { collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { Melding } from '../utils/opslag';
+import {
+  NIEUWE_CODE_ACTIEF,
+  actieveCodesMetRol,
+  bezwaarTegenIntrekken,
+  isActieveCode,
+  magActiveren,
+  uitlegBijBezwaar,
+} from '../utils/toegangscode';
 import { AuthService } from '../services/auth.service';
 
 @Component({
@@ -216,12 +224,13 @@ import { AuthService } from '../services/auth.service';
                     <th class="px-6 py-4">Rol</th>
                     <th class="px-6 py-4">Vak</th>
                     <th class="px-6 py-4">Gemaakt op</th>
+                    <th class="px-6 py-4">Status</th>
                     <th class="px-6 py-4 text-right">Acties</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                   @for (code of filteredCodes(); track code.id) {
-                    <tr class="hover:bg-slate-50 transition-colors" [class.bg-purple-50/40]="code.role === 'Superuser'">
+                    <tr class="hover:bg-slate-50 transition-colors" [class.bg-purple-50/40]="code.role === 'Superuser'" [class.opacity-60]="!isActief(code)">
                       <td class="px-6 py-4">
                         <div class="flex items-center gap-2">
                           <span class="font-mono font-bold text-base" [class.text-purple-700]="code.role === 'Superuser'" [class.text-[#e87700]]="code.role !== 'Superuser'">{{ code.code }}</span>
@@ -244,19 +253,43 @@ import { AuthService } from '../services/auth.service';
                       </td>
                       <td class="px-6 py-4 text-slate-600 italic">{{ code.vak || '-' }}</td>
                       <td class="px-6 py-4 text-slate-400 text-xs">{{ code.createdAt | date:'dd-MM HH:mm' }}</td>
-                      <td class="px-6 py-4 text-right">
-                        @if (code.role === 'Superuser') {
-                          <span class="text-xs font-semibold text-purple-700 bg-purple-100/80 border border-purple-200 px-2 py-1 rounded">Beheerder</span>
+                      <td class="px-6 py-4">
+                        @if (isActief(code)) {
+                          <span class="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200">Actief</span>
                         } @else {
-                          <button (click)="promptDeleteCode(code)" class="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Code verwijderen">
-                            <mat-icon class="text-[18px] w-[18px] h-[18px]">delete</mat-icon>
-                          </button>
+                          <span class="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide bg-slate-100 text-slate-500 border border-slate-200" title="Ingetrokken op {{ code.gewijzigdOp | date:'dd-MM-yyyy HH:mm' }}">Ingetrokken</span>
                         }
+                      </td>
+                      <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end gap-1">
+                          @if (kanActiveren(code)) {
+                            <button (click)="zetCodeActief(code, true)" [disabled]="bezigMetCode() === code.id"
+                                    class="px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                                    title="Code weer laten werken">
+                              <mat-icon class="text-[15px] w-[15px] h-[15px]">lock_open</mat-icon>
+                              Activeren
+                            </button>
+                          } @else if (bezwaarIntrekken(code); as bezwaar) {
+                            <span class="text-[11px] text-slate-400 italic max-w-[220px] text-right" [title]="bezwaar">Laatste beheerderscode</span>
+                          } @else {
+                            <button (click)="zetCodeActief(code, false)" [disabled]="bezigMetCode() === code.id"
+                                    class="px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 border border-amber-200 rounded transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                                    title="Code dichtzetten; wie ermee is ingelogd verliest zijn toegang">
+                              <mat-icon class="text-[15px] w-[15px] h-[15px]">block</mat-icon>
+                              Intrekken
+                            </button>
+                          }
+                          @if (code.role !== 'Superuser') {
+                            <button (click)="promptDeleteCode(code)" class="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer" title="Code verwijderen (onomkeerbaar, laat geen spoor na)">
+                              <mat-icon class="text-[18px] w-[18px] h-[18px]">delete</mat-icon>
+                            </button>
+                          }
+                        </div>
                       </td>
                     </tr>
                   } @empty {
                     <tr>
-                      <td colspan="6" class="px-6 py-20 text-center text-slate-400 italic">Geen codes gevonden.</td>
+                      <td colspan="7" class="px-6 py-20 text-center text-slate-400 italic">Geen codes gevonden.</td>
                     </tr>
                   }
                 </tbody>
@@ -472,6 +505,67 @@ export class SuperuserComponent {
 
   superuserCodes = computed(() => this.codes().filter(c => c.role === 'Superuser'));
 
+  /** Actieve beheerderscodes. Een ingetrokken code telt niet als vangnet. */
+  actieveBeheerders = computed(() => actieveCodesMetRol(this.codes(), 'Superuser'));
+
+  /** Bezig met intrekken of activeren; blokkeert dubbelklikken. */
+  bezigMetCode = signal<string | null>(null);
+
+  isActief(code: AccessCode): boolean {
+    return isActieveCode(code);
+  }
+
+  kanActiveren(code: AccessCode): boolean {
+    return magActiveren(code);
+  }
+
+  /** Uitleg waarom intrekken niet kan, of null als het gewoon mag. */
+  bezwaarIntrekken(code: AccessCode): string | null {
+    const bezwaar = bezwaarTegenIntrekken(code, this.codes());
+    return bezwaar === null || bezwaar === 'al-ingetrokken' ? null : uitlegBijBezwaar(bezwaar);
+  }
+
+  /**
+   * Trekt een code in of zet hem weer aan.
+   *
+   * Intrekken is met opzet omkeerbaar: een code die per ongeluk bij de
+   * verkeerde persoon terechtkwam moet je direct kunnen dichtzetten, en een
+   * vergissing moet je terug kunnen draaien zonder een nieuwe code uit te
+   * delen. Verwijderen blijft bestaan, maar wist ook het spoor.
+   */
+  async zetCodeActief(code: AccessCode, actief: boolean) {
+    if (!code.id) return;
+
+    if (!actief) {
+      const bezwaar = bezwaarTegenIntrekken(code, this.codes());
+      if (bezwaar) {
+        this.melding.set({ soort: 'fout', tekst: uitlegBijBezwaar(bezwaar) });
+        return;
+      }
+    }
+
+    this.bezigMetCode.set(code.id);
+    try {
+      await setDoc(
+        doc(db, 'codes', code.id),
+        { active: actief, gewijzigdOp: new Date().toISOString() },
+        { merge: true },
+      );
+      this.melding.set({
+        soort: 'ok',
+        tekst: actief
+          ? `Toegangscode van ${code.ownerName} is weer actief.`
+          : `Toegangscode van ${code.ownerName} is ingetrokken. Wie er nu mee is ingelogd, verliest bij de eerstvolgende actie zijn toegang.`,
+      });
+    } catch (e) {
+      console.error('Code intrekken/activeren mislukt', e);
+      const reden = e instanceof Error ? e.message : String(e);
+      this.melding.set({ soort: 'fout', tekst: 'Wijzigen van de code is niet gelukt: ' + reden });
+    } finally {
+      this.bezigMetCode.set(null);
+    }
+  }
+
   // Delete modal state
   codeToDelete = signal<AccessCode | null>(null);
   isDeleting = signal(false);
@@ -589,6 +683,7 @@ export class SuperuserComponent {
         ownerName: row.ownerName,
         ownerEmail: row.ownerEmail,
         createdAt: new Date().toISOString(),
+        active: NIEUWE_CODE_ACTIEF,
         used: false
       };
 
@@ -682,6 +777,7 @@ export class SuperuserComponent {
       ownerName: this.newCodeName(),
       ownerEmail: this.newCodeEmail(),
       createdAt: new Date().toISOString(),
+      active: NIEUWE_CODE_ACTIEF,
       used: false
     };
 

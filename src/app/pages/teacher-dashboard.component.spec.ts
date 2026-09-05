@@ -1,370 +1,122 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { describe, it, expect } from 'vitest';
+import { TeacherDashboardComponent } from './teacher-dashboard.component';
+import { maakOmgeving } from '../../testing/testbed';
+import { DOCENT, DOCENT2, maakMemoTW12, maakMemoTW3, maakTaak } from '../../testing/factories';
 
-/**
- * Angular 21 ondersteunt vi.mock niet voor relatieve imports.
- *
- * Deze mocks zijn daarom alleen voor externe npm-pakketten.
- * Onze eigen Angular-services worden verderop via TestBed vervangen.
- */
-vi.mock('firebase/app', () => ({
-  initializeApp: vi.fn(() => ({})),
-  getApp: vi.fn(() => ({})),
-  getApps: vi.fn(() => []),
-}));
-
-vi.mock('firebase/auth', () => ({
-  browserSessionPersistence: {},
-  inMemoryPersistence: {},
-  initializeAuth: vi.fn(() => ({
-    currentUser: {
-      uid: 'uid-test',
-    },
-  })),
-  signInAnonymously: vi.fn(),
-}));
-
-vi.mock('firebase/firestore', () => ({
-  getFirestore: vi.fn(() => ({})),
-
-  collection: vi.fn(
-    (_db: unknown, naam: string) => ({
-      path: naam,
-    }),
-  ),
-
-  doc: vi.fn(
-    (_db: unknown, ...delen: string[]) => ({
-      path: delen.join('/'),
-    }),
-  ),
-
-  query: vi.fn((ref: unknown) => ref),
-
-  orderBy: vi.fn(() => ({})),
-
-  setDoc: vi.fn(),
-
-  deleteDoc: vi.fn(),
-
-  getDoc: vi.fn(),
-
-  getDocs: vi.fn(),
-
-  onSnapshot: vi.fn(() => vi.fn()),
-
-  writeBatch: vi.fn(() => ({
-    set: vi.fn(),
-    delete: vi.fn(),
-    commit: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
-
-import {
-  onSnapshot,
-  setDoc,
-} from 'firebase/firestore';
-
-import { SuperuserComponent } from './superuser.component';
-import { DataService } from '../services/data.service';
-import { AuthService } from '../services/auth.service';
-import { NepDataService } from '../../testing/nep-dataservice';
-import { AccessCode } from '../models/data.models';
-
-function code(
-  over: Partial<AccessCode> = {},
-): AccessCode {
-  return {
-    id: 'SU-0001',
-    code: 'SU-0001',
-    role: 'Superuser',
-    ownerName: 'Hans Visser',
-    ownerEmail: 'visser@school.nl',
-    docentAfkorting: 'vis',
-    createdAt: '2026-09-05T12:00:00.000Z',
-    active: true,
-    used: false,
-    ...over,
-  };
-}
-
-describe('SuperuserComponent toegangscodes', () => {
-  let data: NepDataService;
-
-  let auth: {
-    currentUser: ReturnType<typeof signal>;
-    logout: ReturnType<typeof vi.fn>;
-  };
-
-  let component: SuperuserComponent;
-
-  beforeEach(() => {
-    TestBed.resetTestingModule();
-
-    vi.mocked(setDoc).mockReset();
-    vi.mocked(setDoc).mockResolvedValue(undefined);
-
-    vi.mocked(onSnapshot).mockReset();
-    vi.mocked(onSnapshot).mockImplementation(
-      () => vi.fn(),
-    );
-
-    data = new NepDataService();
-
-    auth = {
-      currentUser: signal({
-        name: 'Hans Visser',
-        email: 'visser@school.nl',
-        role: 'Superuser',
-        code: 'SU-0001',
-        docentAfkorting: 'vis',
-      }),
-
-      logout: vi.fn().mockResolvedValue(undefined),
-    };
-
-    TestBed.configureTestingModule({
-      providers: [
-        {
-          provide: DataService,
-          useValue: data as unknown as DataService,
-        },
-        {
-          provide: AuthService,
-          useValue: auth as unknown as AuthService,
-        },
-      ],
+describe('Docent: mijn taken', () => {
+  it('toont de taken van de ingelogde docent en niet die van een ander', async () => {
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      vul: data =>
+        data.docentTaken.set([
+          maakTaak({ id: 'mijn', docentEmail: DOCENT.email }),
+          maakTaak({ id: 'ander', docentEmail: DOCENT2.email, docentNaam: DOCENT2.naam }),
+        ]),
     });
 
-    component = TestBed.runInInjectionContext(
-      () => new SuperuserComponent(),
-    );
+    expect(component.myTaken().map(t => t.id)).toEqual(['mijn']);
   });
 
-  afterEach(() => {
-    component.ngOnDestroy();
+  it('herkent het eigen adres ook met andere hoofdletters', async () => {
+    // Het adres uit de toegangscode en het adres uit Docenten/Vakken worden
+    // door mensen ingetypt; die hoeven niet letterlijk gelijk te zijn.
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      gebruiker: { email: DOCENT.email.toUpperCase() },
+      vul: data => data.docentTaken.set([maakTaak({ docentEmail: ` ${DOCENT.email} ` })]),
+    });
+
+    expect(component.myTaken()).toHaveLength(1);
   });
 
-  it(
-    'maakt een nieuwe code alleen voor een expliciet gekozen actieve docent',
-    async () => {
-      data.docenten.set([
-        {
-          afkorting: 'vis',
-          naam: 'Hans Visser',
-          actief: true,
-        },
-      ]);
+  it('zet een taak pas bij "afgerond" als de memo bestaat', async () => {
+    const { component, data, ververs } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      vul: d => d.docentTaken.set([maakTaak({ id: 'taak', periode: 'TW1' })]),
+    });
 
-      component.newCodeRole.set('Docent');
-      component.newCodeAfkorting.set('VIS');
+    expect(component.openTaken().map(t => t.id)).toEqual(['taak']);
+    expect(component.closedTaken()).toHaveLength(0);
 
-      /**
-       * Bewust een andere naam invullen.
-       * createCode moet uiteindelijk de naam uit
-       * het Docent-record gebruiken.
-       */
-      component.newCodeName.set('Piet Jansen');
-      component.newCodeEmail.set(
-        'legacy@school.nl',
-      );
-      component.newCodeVak.set('Wiskunde');
+    data.memoTW1TW2.set([maakMemoTW12({ toetsweek: 'TW1' })]);
+    await ververs();
 
-      expect(
-        component.isValid(),
-      ).toBe(true);
+    expect(component.openTaken()).toHaveLength(0);
+    expect(component.closedTaken().map(t => t.id)).toEqual(['taak']);
+  });
 
-      await component.createCode();
+  it('kijkt naar de memo, niet naar het statusveld', async () => {
+    // Het statusveld werd alleen bijgewerkt als de docent via de link binnenkwam.
+    // Een memo die anders was ingevuld bleef hier eeuwig openstaan.
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      vul: d => {
+        d.docentTaken.set([maakTaak({ status: 'Open', periode: 'TW1' })]);
+        d.memoTW1TW2.set([maakMemoTW12({ toetsweek: 'TW1' })]);
+      },
+    });
 
-      expect(
-        vi.mocked(setDoc),
-      ).toHaveBeenCalledTimes(1);
+    expect(component.openTaken()).toHaveLength(0);
+  });
 
-      const opgeslagen =
-        vi.mocked(setDoc).mock.calls[0][1]
-          as AccessCode;
+  it('houdt de periodes uit elkaar', async () => {
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      vul: d => {
+        d.docentTaken.set([maakTaak({ id: 'tw1', periode: 'TW1' }), maakTaak({ id: 'tw2', periode: 'TW2' })]);
+        d.memoTW1TW2.set([maakMemoTW12({ toetsweek: 'TW1' })]);
+      },
+    });
 
-      expect(
-        opgeslagen.docentAfkorting,
-      ).toBe('vis');
+    expect(component.openTaken().map(t => t.id)).toEqual(['tw2']);
+  });
 
-      expect(
-        opgeslagen.ownerName,
-      ).toBe('Hans Visser');
+  it('telt een TW3-memo mee voor een TW3-taak', async () => {
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      vul: d => {
+        d.docentTaken.set([maakTaak({ id: 'tw3', periode: 'TW3' })]);
+        d.memoTW3.set([maakMemoTW3()]);
+      },
+    });
 
-      expect(
-        opgeslagen.ownerEmail,
-      ).toBe('legacy@school.nl');
+    expect(component.openTaken()).toHaveLength(0);
+  });
 
-      expect(
-        opgeslagen.role,
-      ).toBe('Docent');
+  it('toont taken op basis van docentAfkorting voor moderne data', async () => {
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: data =>
+        data.docentTaken.set([
+          maakTaak({ id: 'modern-vis', docentAfkorting: 'vis', docentEmail: 'anderadres@school.nl' }),
+          maakTaak({ id: 'modern-jan', docentAfkorting: 'jan', docentEmail: 'jansen@school.nl' }),
+        ]),
+    });
 
-      expect(
-        opgeslagen.vak,
-      ).toBe('Wiskunde');
-    },
-  );
+    // Matcht op afkorting 'vis', zelfs als e-mail afwijkt
+    expect(component.myTaken().map(t => t.id)).toEqual(['modern-vis']);
+  });
 
-  it(
-    'weigert een nieuwe code voor een inactieve docent',
-    async () => {
-      data.docenten.set([
-        {
-          afkorting: 'vis',
-          naam: 'Hans Visser',
-          actief: false,
-        },
-      ]);
+  it('toont legacy taken via e-mailfallback voor een docent met afkorting en e-mail', async () => {
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: data =>
+        data.docentTaken.set([
+          // Taak zonder docentAfkorting (legacy)
+          maakTaak({ id: 'legacy-taak', docentEmail: 'visser@school.nl' }),
+          maakTaak({ id: 'legacy-ander', docentEmail: 'iemandanders@school.nl' }),
+        ]),
+    });
 
-      component.newCodeRole.set('Mentor');
-      component.newCodeAfkorting.set('vis');
-      component.newCodeName.set(
-        'Hans Visser',
-      );
-      component.newCodeEmail.set(
-        'legacy@school.nl',
-      );
+    expect(component.myTaken().map(t => t.id)).toEqual(['legacy-taak']);
+  });
 
-      expect(
-        component.isValid(),
-      ).toBe(false);
-
-      await component.createCode();
-
-      expect(
-        vi.mocked(setDoc),
-      ).not.toHaveBeenCalled();
-    },
-  );
-
-  it(
-    'accepteert in CSV alleen een bekende actieve docentAfkorting en gebruikt diens naam',
-    async () => {
-      data.docenten.set([
-        {
-          afkorting: 'vis',
-          naam: 'Hans Visser',
-          actief: true,
-        },
-      ]);
-
-      const bestand = new File(
-        [
-          'Afkorting;Email;Rol;Vak\n' +
-          'VIS;legacy@school.nl;Docent;Wiskunde\n',
-        ],
-        'codes.csv',
-        {
-          type: 'text/csv',
-        },
-      );
-
-      const target = {
-        files: [bestand],
-        value: 'codes.csv',
-      };
-
-      component.onFileSelected({
-        target,
-      } as unknown as Event);
-
-      await vi.waitFor(() => {
-        expect(
-          component.csvPreviewData(),
-        ).not.toBeNull();
-      });
-
-      const rij =
-        component.csvPreviewData()?.[0];
-
-      expect(
-        rij?.docentAfkorting,
-      ).toBe('vis');
-
-      expect(
-        rij?.ownerName,
-      ).toBe('Hans Visser');
-
-      expect(
-        rij?.ownerEmail,
-      ).toBe('legacy@school.nl');
-    },
-  );
-
-  it(
-    'wijst een onbekende docentAfkorting in CSV af',
-    async () => {
-      data.docenten.set([
-        {
-          afkorting: 'vis',
-          naam: 'Hans Visser',
-          actief: true,
-        },
-      ]);
-
-      const bestand = new File(
-        [
-          'Afkorting;Email;Rol;Vak\n' +
-          'xyz;legacy@school.nl;Mentor;\n',
-        ],
-        'codes.csv',
-        {
-          type: 'text/csv',
-        },
-      );
-
-      const target = {
-        files: [bestand],
-        value: 'codes.csv',
-      };
-
-      component.onFileSelected({
-        target,
-      } as unknown as Event);
-
-      await vi.waitFor(() => {
-        expect(
-          component.melding()?.tekst,
-        ).toContain('niet gevonden');
-      });
-
-      expect(
-        component.csvPreviewData(),
-      ).toBeNull();
-    },
-  );
-
-  it(
-    'beschermt de laatste actieve Superuser-code',
-    () => {
-      const enige = code();
-
-      component.codes.set([
-        enige,
-      ]);
-
-      expect(
-        component.bezwaarIntrekken(enige),
-      ).not.toBeNull();
-
-      const tweede = code({
-        id: 'SU-0002',
-        code: 'SU-0002',
-        docentAfkorting: 'jan',
-        ownerName: 'Jan Jansen',
-        ownerEmail: 'jan@school.nl',
-      });
-
-      component.codes.set([
-        enige,
-        tweede,
-      ]);
-
-      expect(
-        component.bezwaarIntrekken(enige),
-      ).toBeNull();
-    },
-  );
+  it('stuurt per periode naar het juiste memoscherm', async () => {
+    const { component } = await maakOmgeving(TeacherDashboardComponent, { rol: 'Docent' });
+    expect(component.getMemoRoute('TW1')).toBe('/memo-1');
+    expect(component.getMemoRoute('TW2')).toBe('/memo-2');
+    expect(component.getMemoRoute('TW3')).toBe('/memo-3');
+  });
 });

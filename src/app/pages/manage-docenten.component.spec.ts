@@ -351,6 +351,142 @@ describe('Docenten: wie mist er nog een afkorting', () => {
   });
 });
 
+describe('Docenten: migratie-readiness', () => {
+  it('is gereed als alle koppelingen een bekende docentafkorting hebben', async () => {
+    const { component } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+            }),
+          ]);
+
+          d.docentVakken.set([
+            maakDocentVak({
+              id: 'koppeling-1',
+              docentAfkorting: 'VIS',
+            }),
+          ]);
+        },
+      },
+    );
+
+    const status = component.migratieStatus();
+
+    expect(status.gereed).toBe(true);
+    expect(status.totaalRecords).toBe(1);
+    expect(status.metAfkorting).toBe(1);
+    expect(status.zonderAfkorting).toBe(0);
+    expect(status.onbekendeAfkorting).toBe(0);
+    expect(status.dubbeleAfkortingen).toEqual([]);
+  });
+
+  it('is niet gereed als een koppeling nog geen docentafkorting heeft', async () => {
+    const { component } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+            }),
+          ]);
+
+          d.docentVakken.set([
+            maakDocentVak({
+              id: 'koppeling-1',
+              docentAfkorting: undefined,
+            }),
+          ]);
+        },
+      },
+    );
+
+    const status = component.migratieStatus();
+
+    expect(status.gereed).toBe(false);
+    expect(status.zonderAfkorting).toBe(1);
+    expect(status.onbekendeAfkorting).toBe(0);
+
+    expect(status.problemen).toContainEqual({
+      collectie: 'Docenten/Vakken',
+      recordId: 'koppeling-1',
+      soort: 'ontbreekt',
+    });
+  });
+
+  it('is niet gereed als een koppeling naar een onbekende afkorting verwijst', async () => {
+    const { component } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+            }),
+          ]);
+
+          d.docentVakken.set([
+            maakDocentVak({
+              id: 'koppeling-1',
+              docentAfkorting: 'xyz',
+            }),
+          ]);
+        },
+      },
+    );
+
+    const status = component.migratieStatus();
+
+    expect(status.gereed).toBe(false);
+    expect(status.zonderAfkorting).toBe(0);
+    expect(status.onbekendeAfkorting).toBe(1);
+
+    expect(status.problemen).toContainEqual({
+      collectie: 'Docenten/Vakken',
+      recordId: 'koppeling-1',
+      soort: 'onbekend',
+      docentAfkorting: 'xyz',
+    });
+  });
+
+  it('is niet gereed bij dubbele docentafkortingen', async () => {
+    const { component } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+            }),
+            maakDocent({
+              afkorting: 'VIS',
+              naam: 'Tweede Visser',
+            }),
+          ]);
+        },
+      },
+    );
+
+    const status = component.migratieStatus();
+
+    expect(status.gereed).toBe(false);
+    expect(status.dubbeleAfkortingen).toEqual([
+      'vis',
+    ]);
+  });
+});
+
 describe('Docenten: CSV-import', () => {
   const kop = 'afkorting;naam;actief\n';
 

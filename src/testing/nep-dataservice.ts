@@ -10,6 +10,7 @@ import {
   MentorVoorbereiding,
   Voortgangsplan,
 } from '../app/models/data.models';
+import { losDocentIdentiteitOp } from '../app/utils/docent-identiteit';
 
 /**
  * DataService zonder Firebase.
@@ -297,8 +298,10 @@ export class NepDataService {
   }
 
   async zetTakenUit(nieuweTaken: Omit<DocentTaak, 'id'>[]) {
-    const sleutel = (t: { leerlingnummer: string; docentEmail: string; periode: string; schooljaar: string }) =>
-      `${t.leerlingnummer}|${t.docentEmail.trim().toLowerCase()}|${t.periode}|${t.schooljaar}`;
+    const sleutel = (t: { leerlingnummer: string; docentEmail: string; docentAfkorting?: string; periode: string; schooljaar: string }) => {
+      const id = losDocentIdentiteitOp(t);
+      return `${t.leerlingnummer}|${id.sleutel}|${t.periode}|${t.schooljaar}`;
+    };
     const bestaand = new Set(this.docentTaken().map(sleutel));
     const teSchrijven = nieuweTaken.filter(taak => !bestaand.has(sleutel(taak)));
     this.controleer('zetTakenUit');

@@ -3,6 +3,7 @@ import { Leerling, Docent, DocentVak, MemoTW1TW2, MemoTW3, MentorVoorbereiding, 
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, sessieActief } from './firebase';
 import { Luisteraars, Stopper } from '../utils/luisteraars';
+import { losDocentIdentiteitOp } from '../utils/docent-identiteit';
 
 enum OperationType {
   CREATE = 'create',
@@ -511,11 +512,15 @@ export class DataService {
    */
   async zetTakenUit(nieuweTaken: Omit<DocentTaak, 'id'>[]) {
     try {
-      const bestaand = new Set(this.docentTaken().map(t =>
-        `${t.leerlingnummer}|${t.docentEmail.trim().toLowerCase()}|${t.periode}|${t.schooljaar}`));
+      const sleutel = (t: { leerlingnummer: string; docentEmail: string; docentAfkorting?: string; periode: string; schooljaar: string }) => {
+        const id = losDocentIdentiteitOp(t);
+        return `${t.leerlingnummer}|${id.sleutel}|${t.periode}|${t.schooljaar}`;
+      };
+
+      const bestaand = new Set(this.docentTaken().map(sleutel));
 
       const teSchrijven = nieuweTaken
-        .filter(taak => !bestaand.has(`${taak.leerlingnummer}|${taak.docentEmail.trim().toLowerCase()}|${taak.periode}|${taak.schooljaar}`))
+        .filter(taak => !bestaand.has(sleutel(taak)))
         .map(taak => ({ data: taak }));
 
       await this.bulkSave('docentTaken', teSchrijven);

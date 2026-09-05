@@ -261,4 +261,51 @@ describe('Docent: alleen de eigen koppelingen', () => {
 
     expect(component.nietGekoppeld()).toBe(true);
   });
+
+  it('toont een vakdocent met docentAfkorting de eigen regels op basis van afkorting', async () => {
+    const { component, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: d => {
+        d.leerlingen.set([maakLeerling()]);
+        d.docentVakken.set([
+          maakDocentVak({ id: 'van-vis', docentAfkorting: 'vis', docentEmail: 'ander@school.nl' }),
+          maakDocentVak({ id: 'van-jan', docentAfkorting: 'jan', docentEmail: 'jansen@school.nl' }),
+        ]);
+      },
+    });
+
+    component.form.patchValue({ klas: KLAS });
+    await ververs();
+
+    expect(component.filteredDocentVakken().map(dv => dv.id)).toEqual(['van-vis']);
+  });
+
+  it('slaat docentAfkorting op in de memo bij indiening door docent met afkorting', async () => {
+    const { component, data, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: d => {
+        d.leerlingen.set([maakLeerling()]);
+        d.docentVakken.set([maakDocentVak({ id: 'dv-vis', docentAfkorting: 'vis', docentEmail: 'visser@school.nl' })]);
+      },
+    });
+
+    component.form.patchValue({ klas: KLAS, leerlingId: 'leerling-1', docentVakId: 'dv-vis' });
+    await ververs();
+    component.form.patchValue({
+      waarZieJeDitAan: 'Aandachtspunt waargenomen.',
+      leerlingActie: 'Oefenen.',
+      docentActie: 'Begeleiden.',
+    });
+    await ververs();
+
+    await component.submitFinal();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(1);
+    const opgeslagen = data.memoTW1TW2()[0];
+    expect(opgeslagen.docentAfkorting).toBe('vis');
+    expect(opgeslagen.docentEmail).toBe('visser@school.nl');
+  });
 });

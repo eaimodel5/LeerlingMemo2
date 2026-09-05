@@ -109,6 +109,10 @@ export interface Inlog {
   sessieRol?: Rol;
   /** Laat het veld `code` weg uit de sessie. */
   sessieZonderCode?: boolean;
+  /** docentAfkorting in het code-document. */
+  docentAfkorting?: string;
+  /** docentAfkorting in de sessie (als afwijkend gewenst voor tests). */
+  sessieDocentAfkorting?: string;
 }
 
 /**
@@ -125,12 +129,23 @@ export async function alsGebruiker(omgeving: RulesTestEnvironment, opties: Inlog
   await omgeving.withSecurityRulesDisabled(async ctx => {
     const db = ctx.firestore();
     if (!opties.zonderCode) {
-      const code: Record<string, unknown> = codeDoc({ code: codeId, role: rol });
+      const code: Record<string, unknown> = codeDoc({
+        code: codeId,
+        role: rol,
+        ...(opties.docentAfkorting ? { docentAfkorting: opties.docentAfkorting } : {}),
+      });
       if (opties.zonderActiefVeld) delete code['active'];
       else code['active'] = !opties.ingetrokken;
       await setDoc(doc(db, 'codes', codeId), code);
     }
-    const sessie: Record<string, unknown> = sessieDoc({ code: codeId, role: opties.sessieRol ?? rol });
+    const afk = opties.sessieDocentAfkorting !== undefined
+      ? opties.sessieDocentAfkorting
+      : opties.docentAfkorting;
+    const sessie: Record<string, unknown> = sessieDoc({
+      code: codeId,
+      role: opties.sessieRol ?? rol,
+      ...(afk ? { docentAfkorting: afk } : {}),
+    });
     if (opties.sessieZonderCode) delete sessie['code'];
     await setDoc(doc(db, 'userSessions', uid), sessie);
   });

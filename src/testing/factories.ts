@@ -231,7 +231,7 @@ export function maakCode(over: Partial<AccessCode> = {}): AccessCode {
 }
 
 /** De ingelogde gebruiker zoals AuthService hem bijhoudt. */
-export function maakGebruiker(rol: UserRole, over: Partial<{ name: string; email: string; vak: string }> = {}) {
+export function maakGebruiker(rol: UserRole, over: Partial<{ name: string; email: string; vak: string; docentAfkorting: string; code: string }> = {}) {
   const standaard =
     rol === 'Docent'
       ? { name: DOCENT.naam, email: DOCENT.email }

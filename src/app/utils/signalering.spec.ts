@@ -121,6 +121,54 @@ describe('signalering', () => {
     }));
     expect(signalen.find(s => s.code === 'leerling-zonder-klas')).toBeUndefined();
   });
+
+  it('herkent gekoppelde taken via docentAfkorting (modern)', () => {
+    const signalen = bepaalSignalen(invoer({
+      leerlingen: [leerling()],
+      docentVakken: [koppeling({ docentAfkorting: 'vis', docentEmail: 'oud@school.nl' })],
+      docentTaken: [{
+        id: 't1',
+        schooljaar: JAAR,
+        periode: 'TW1',
+        klas: '3HB',
+        leerlingnummer: '114334',
+        leerling: 'Dae Aartsen',
+        vak: 'Wiskunde',
+        docentAfkorting: 'vis',
+        docentEmail: 'nieuw@school.nl',
+        docentNaam: 'B. Houtman',
+        mentorEmail: 'mentor@school.nl',
+        status: 'Open',
+        aangemaaktOp: '',
+        gewijzigdOp: ''
+      }]
+    }));
+    expect(signalen.find(s => s.code === 'taak-zonder-docent')).toBeUndefined();
+  });
+
+  it('herkent wezentaak als noch afkorting noch e-mail overeenkomt', () => {
+    const signalen = bepaalSignalen(invoer({
+      leerlingen: [leerling()],
+      docentVakken: [koppeling({ docentAfkorting: 'jan', docentEmail: 'jansen@school.nl' })],
+      docentTaken: [{
+        id: 't1',
+        schooljaar: JAAR,
+        periode: 'TW1',
+        klas: '3HB',
+        leerlingnummer: '114334',
+        leerling: 'Dae Aartsen',
+        vak: 'Wiskunde',
+        docentAfkorting: 'vis',
+        docentEmail: 'visser@school.nl',
+        docentNaam: 'B. Houtman',
+        mentorEmail: 'mentor@school.nl',
+        status: 'Open',
+        aangemaaktOp: '',
+        gewijzigdOp: ''
+      }]
+    }));
+    expect(signalen.find(s => s.code === 'taak-zonder-docent')?.aantal).toBe(1);
+  });
 });
 
 describe('voortgangPerKlas', () => {

@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
 import { DocentTaak } from '../models/data.models';
 import { bepaalStatus, vakSleutel, TaakStatus, STATUS_KLEUR, STATUS_ICOON, STATUS_LABEL, STATUS_UITLEG } from '../utils/taak-status';
+import { losDocentIdentiteitOp, bouwDocentIdentiteitVelden } from '../utils/docent-identiteit';
 
 @Component({
   selector: 'app-mentor-overview',
@@ -400,7 +401,11 @@ export class MentorOverviewComponent {
    */
   vakKolommen = computed(() => {
     const kolommen = this.vakDocentenKlas().map(dv => ({
-      vak: dv.vak, docentNaam: dv.docentNaam, docentEmail: dv.docentEmail, gekoppeld: true
+      vak: dv.vak,
+      docentNaam: dv.docentNaam,
+      docentEmail: dv.docentEmail,
+      docentAfkorting: dv.docentAfkorting,
+      gekoppeld: true
     }));
     const bekend = new Set(kolommen.map(k => k.vak.trim().toLowerCase()));
 
@@ -408,7 +413,13 @@ export class MentorOverviewComponent {
       const sleutel = memo.vak.trim().toLowerCase();
       if (bekend.has(sleutel)) continue;
       bekend.add(sleutel);
-      kolommen.push({ vak: memo.vak, docentNaam: memo.docentNaam, docentEmail: memo.docentEmail, gekoppeld: false });
+      kolommen.push({
+        vak: memo.vak,
+        docentNaam: memo.docentNaam,
+        docentEmail: memo.docentEmail,
+        docentAfkorting: memo.docentAfkorting,
+        gekoppeld: false
+      });
     }
 
     return kolommen.sort((a, b) => a.vak.localeCompare(b.vak, 'nl'));
@@ -451,14 +462,15 @@ export class MentorOverviewComponent {
 
   /** Vakdocenten die nog memo's open hebben staan, met de leerlingen erbij. */
   openstaandeDocenten = computed(() => {
-    const perDocent = new Map<string, { naam: string; email: string; regels: string[]; taakIds: string[]; herinnerdOp?: string }>();
+    const perDocent = new Map<string, { naam: string; email: string; afkorting?: string; regels: string[]; taakIds: string[]; herinnerdOp?: string }>();
 
     for (const rij of this.bord()) {
       for (const cel of rij.cellen) {
         if (cel.status !== 'open') continue;
-        const sleutel = (cel.kolom.docentEmail || cel.kolom.docentNaam).trim().toLowerCase();
+        const id = losDocentIdentiteitOp(cel.kolom);
+        const sleutel = id.sleutel || cel.kolom.docentNaam.trim().toLowerCase();
         const bestaand = perDocent.get(sleutel)
-          ?? { naam: cel.kolom.docentNaam, email: cel.kolom.docentEmail, regels: [], taakIds: [] };
+          ?? { naam: cel.kolom.docentNaam, email: cel.kolom.docentEmail, afkorting: id.docentAfkorting ?? undefined, regels: [], taakIds: [] };
         bestaand.regels.push(`${rij.leerling.leerling} — ${cel.kolom.vak}`);
         if (cel.taak?.id) bestaand.taakIds.push(cel.taak.id);
         if (cel.taak?.herinnerdOp && (!bestaand.herinnerdOp || cel.taak.herinnerdOp > bestaand.herinnerdOp)) {
@@ -484,13 +496,15 @@ export class MentorOverviewComponent {
       for (const cel of rij.cellen) {
         // Alleen waar nog niets staat: bestaande taken en ingevulde memo's blijven met rust.
         if (cel.status !== 'niet-gevraagd' || !cel.kolom.gekoppeld) continue;
+        const idVelden = bouwDocentIdentiteitVelden(cel.kolom);
         nieuwe.push({
           schooljaar: this.schooljaar(),
           periode: this.periode() as 'TW1' | 'TW2' | 'TW3',
           klas: this.klas(),
           leerlingnummer: rij.leerling.leerlingnummer,
           leerling: rij.leerling.leerling,
-          docentEmail: cel.kolom.docentEmail,
+          docentEmail: idVelden.docentEmail,
+          ...(idVelden.docentAfkorting ? { docentAfkorting: idVelden.docentAfkorting } : {}),
           docentNaam: cel.kolom.docentNaam,
           vak: cel.kolom.vak,
           mentorEmail: rij.leerling.mentorEmail,
@@ -633,20 +647,24 @@ export class MentorOverviewComponent {
     const nu = new Date().toISOString();
     // Via zetTakenUit, zodat al bestaande taken worden overgeslagen in plaats van
     // opnieuw op 'Open' gezet. Een tweede klik wiste anders de voortgang.
-    const aantal = await this.dataService.zetTakenUit(vakDocenten.map(docentVak => ({
-      schooljaar: this.schooljaar(),
-      periode: this.periode() as 'TW1' | 'TW2' | 'TW3',
-      klas: this.klas(),
-      leerlingnummer: leerling.leerlingnummer,
-      leerling: leerling.leerling,
-      docentEmail: docentVak.docentEmail,
-      docentNaam: docentVak.docentNaam,
-      vak: docentVak.vak,
-      mentorEmail: leerling.mentorEmail,
-      status: 'Open',
-      aangemaaktOp: nu,
-      gewijzigdOp: nu,
-    })));
+    const aantal = await this.dataService.zetTakenUit(vakDocenten.map(docentVak => {
+      const idVelden = bouwDocentIdentiteitVelden(docentVak);
+      return {
+        schooljaar: this.schooljaar(),
+        periode: this.periode() as 'TW1' | 'TW2' | 'TW3',
+        klas: this.klas(),
+        leerlingnummer: leerling.leerlingnummer,
+        leerling: leerling.leerling,
+        docentEmail: idVelden.docentEmail,
+        ...(idVelden.docentAfkorting ? { docentAfkorting: idVelden.docentAfkorting } : {}),
+        docentNaam: docentVak.docentNaam,
+        vak: docentVak.vak,
+        mentorEmail: leerling.mentorEmail,
+        status: 'Open',
+        aangemaaktOp: nu,
+        gewijzigdOp: nu,
+      };
+    }));
 
     this.toonMelding(aantal === 0
       ? 'Er stonden al taken uit voor deze leerling; er is niets gewijzigd.'

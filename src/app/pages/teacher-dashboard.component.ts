@@ -5,7 +5,8 @@ import { DataService } from '../services/data.service';
 import { AuthService } from '../services/auth.service';
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
-import { zelfdeEmail, vakSleutel } from '../utils/taak-status';
+import { vakSleutel } from '../utils/taak-status';
+import { filterVoorDocent } from '../utils/docent-identiteit';
 
 @Component({
   selector: 'app-teacher-dashboard',
@@ -103,11 +104,11 @@ export class TeacherDashboardComponent {
   filterPeriode = signal('All');
 
   myTaken = computed(() => {
-    const email = this.auth.currentUser()?.email;
-    if (!email) return [];
-    // Hoofdletterongevoelig: het adres uit de toegangscode en het adres uit
-    // Docenten/Vakken hoeven niet letterlijk hetzelfde geschreven te zijn.
-    let taken = this.dataService.docentTaken().filter(t => zelfdeEmail(t.docentEmail, email));
+    const user = this.auth.currentUser();
+    if (!user) return [];
+    // Gebruikt centrale identiteitsresolver (PR 7): koppelt via docentAfkorting
+    // indien aanwezig, met e-mailadres als tijdelijke overgangsfallback.
+    let taken = filterVoorDocent(this.dataService.docentTaken(), user);
 
     if (this.filterPeriode() !== 'All') {
       taken = taken.filter(t => t.periode === this.filterPeriode());

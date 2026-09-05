@@ -1,5 +1,6 @@
 import { Leerling, DocentVak, MemoTW1TW2, MemoTW3, DocentTaak } from '../models/data.models';
-import { zelfdeEmail, vakSleutel } from './taak-status';
+import { vakSleutel } from './taak-status';
+import { komtDocentOvereen } from './docent-identiteit';
 
 /**
  * Zoekt naar gaten in de gegevens die verklaren waarom een scherm leeg blijft.
@@ -129,10 +130,9 @@ export function bepaalSignalen(invoer: SignaleringInvoer): Signaal[] {
     });
   }
 
-  // Taken die naar een adres wijzen dat nergens meer gekoppeld is.
-  const bekendeAdressen = koppelingen.map(dv => dv.docentEmail).filter(Boolean);
+  // Taken die naar een docent wijzen die nergens meer gekoppeld is.
   const takenDitJaar = invoer.docentTaken.filter(t => t.schooljaar === invoer.schooljaar);
-  const wezenTaken = takenDitJaar.filter(t => !bekendeAdressen.some(adres => zelfdeEmail(adres, t.docentEmail)));
+  const wezenTaken = takenDitJaar.filter(t => !koppelingen.some(dv => komtDocentOvereen(dv, t)));
   if (wezenTaken.length) {
     signalen.push({
       code: 'taak-zonder-docent',

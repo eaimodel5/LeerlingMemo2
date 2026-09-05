@@ -186,6 +186,27 @@ describe('Mentor: taken uitzetten', () => {
     expect(open.map(d => d.naam).sort()).toEqual([DOCENT.naam, DOCENT2.naam].sort());
     expect(open.every(d => d.taakIds.length === 1)).toBe(true);
   });
+
+  it('neemt docentAfkorting mee bij het uitzetten van taken voor een gekoppeld vak met afkorting', async () => {
+    const { component, data, ververs } = await maakOmgeving(MentorOverviewComponent, {
+      rol: 'Mentor',
+      vul: d => {
+        d.leerlingen.set([maakLeerling()]);
+        d.docentVakken.set([
+          maakDocentVak({ id: 'wis-afk', vak: VAK, docentAfkorting: 'vis', docentEmail: 'visser@school.nl' }),
+        ]);
+      },
+    });
+
+    await kiesKlas(component, ververs);
+    await component.zetTakenUitVoorKlas();
+    await ververs();
+
+    const taak = data.docentTaken()[0];
+    expect(taak).toBeDefined();
+    expect(taak.docentAfkorting).toBe('vis');
+    expect(taak.docentEmail).toBe('visser@school.nl');
+  });
 });
 
 describe('Mentor: klas op slot', () => {

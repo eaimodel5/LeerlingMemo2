@@ -33,18 +33,23 @@ function codeIsActief() {
   return codeDataIsActief(codeVanSessie());
 }
 
+function docentIdentiteitKlopt(codeData, sessieData) {
+  return sessieData.get('docentAfkorting', null)
+      == codeData.get('docentAfkorting', null);
+}
+
 // Geldig zijn is meer dan 'er is een sessiedocument'. De sessie moet
-// verwijzen naar een code die nog bestaat en nog actief is, en de rol in de
-// sessie moet nog steeds de rol van die code zijn. Zonder die laatste twee
-// controles bleef iemand die al was ingelogd gewoon doorwerken nadat zijn
-// code was ingetrokken -- de sessie was immers al geschreven.
+// verwijzen naar een code die nog bestaat en nog actief is, de rol in de
+// sessie moet nog steeds de rol van die code zijn, en de eventuele
+// personeelsidentiteit (docentAfkorting) moet exact overeenkomen.
 function hasValidSession() {
   return isAuthenticated()
       && exists(/databases/$(database)/documents/userSessions/$(request.auth.uid))
       && sessionData().code is string
       && exists(/databases/$(database)/documents/codes/$(sessionData().code))
       && codeIsActief()
-      && sessionData().role == codeVanSessie().role;
+      && sessionData().role == codeVanSessie().role
+      && docentIdentiteitKlopt(codeVanSessie(), sessionData());
 }
 
 function userRole() {
@@ -84,13 +89,17 @@ match /userSessions/{userId} {
   allow get: if isAuthenticated() && request.auth.uid == userId;
 
   // Aanmaken of bijwerken van een sessie mag ALLEEN als de code daadwerkelijk bestaat
-  // in /codes én de toegekende rol exact overeenkomt met de rol in dat code-document.
-  // Hierdoor kan niemand via de browser een valse beheerderrol forceren.
+  // in /codes, de toegekende rol exact overeenkomt met de rol in dat code-document,
+  // én de docentAfkorting exact overeenkomt met de code (geen valse personeelsidentiteit).
   allow create, update: if isAuthenticated()
       && request.auth.uid == userId
       && request.resource.data.code is string
       && exists(/databases/$(database)/documents/codes/$(request.resource.data.code))
       && request.resource.data.role == get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data.role
+      && docentIdentiteitKlopt(
+        get(/databases/$(database)/documents/codes/$(request.resource.data.code)).data,
+        request.resource.data
+      )
       // Met een ingetrokken code begin je geen nieuwe sessie.
       // Ook hier via dezelfde helper, zodat legacycodes zonder active/used
       // dezelfde betekenis hebben als bij een reeds actieve sessie.

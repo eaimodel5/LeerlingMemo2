@@ -83,6 +83,36 @@ describe('Docent: mijn taken', () => {
     expect(component.openTaken()).toHaveLength(0);
   });
 
+  it('toont taken op basis van docentAfkorting voor moderne data', async () => {
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: data =>
+        data.docentTaken.set([
+          maakTaak({ id: 'modern-vis', docentAfkorting: 'vis', docentEmail: 'anderadres@school.nl' }),
+          maakTaak({ id: 'modern-jan', docentAfkorting: 'jan', docentEmail: 'jansen@school.nl' }),
+        ]),
+    });
+
+    // Matcht op afkorting 'vis', zelfs als e-mail afwijkt
+    expect(component.myTaken().map(t => t.id)).toEqual(['modern-vis']);
+  });
+
+  it('toont legacy taken via e-mailfallback voor een docent met afkorting en e-mail', async () => {
+    const { component } = await maakOmgeving(TeacherDashboardComponent, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: data =>
+        data.docentTaken.set([
+          // Taak zonder docentAfkorting (legacy)
+          maakTaak({ id: 'legacy-taak', docentEmail: 'visser@school.nl' }),
+          maakTaak({ id: 'legacy-ander', docentEmail: 'iemandanders@school.nl' }),
+        ]),
+    });
+
+    expect(component.myTaken().map(t => t.id)).toEqual(['legacy-taak']);
+  });
+
   it('stuurt per periode naar het juiste memoscherm', async () => {
     const { component } = await maakOmgeving(TeacherDashboardComponent, { rol: 'Docent' });
     expect(component.getMemoRoute('TW1')).toBe('/memo-1');

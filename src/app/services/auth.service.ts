@@ -19,6 +19,11 @@ export interface AuthUser {
   role: UserRole;
   vak?: string;
   code?: string;
+  /**
+   * De schoolafkorting van de docent (/docenten/{afkorting}).
+   * Overgenomen uit het AccessCode-document; nooit geraden uit naam of e-mail.
+   */
+  docentAfkorting?: string;
 }
 
 export type InlogResultaat = { ok: true } | { ok: false; reden: InlogFout; melding: string };
@@ -117,6 +122,7 @@ export class AuthService {
         role: data.role,
         vak: data.vak,
         code: snap.id,
+        ...(data.docentAfkorting ? { docentAfkorting: data.docentAfkorting } : {}),
       };
 
       await this.schrijfSessie(uid, gebruiker);
@@ -214,20 +220,25 @@ export class AuthService {
   }
 
   /**
-   * Legt de rol vast in /userSessions/{uid}.
+   * Legt de rol en eventuele docentidentiteit vast in /userSessions/{uid}.
    *
    * Dit document is wat de beveiligingsregels lezen. De regel controleert zelf
-   * dat `code` bestaat in /codes en dat `role` exact gelijk is aan de rol in dat
-   * code-document — de rol vervalsen vanuit de browser levert dus niets op.
+   * dat `code` bestaat in /codes, dat `role` exact gelijk is aan de rol in dat
+   * code-document, én dat `docentAfkorting` exact overeenkomt met de code.
+   * Schrijft geen undefined-waarden naar Firestore.
    */
   private async schrijfSessie(uid: string, gebruiker: AuthUser) {
-    await setDoc(doc(db, 'userSessions', uid), {
+    const sessie: Record<string, unknown> = {
       code: gebruiker.code,
       role: gebruiker.role,
       ownerName: gebruiker.name,
       ownerEmail: gebruiker.email,
       startedAt: new Date().toISOString(),
-    });
+    };
+    if (gebruiker.docentAfkorting) {
+      sessie['docentAfkorting'] = gebruiker.docentAfkorting;
+    }
+    await setDoc(doc(db, 'userSessions', uid), sessie);
   }
 
   /** Meldt een opgeslagen inlog opnieuw aan, bij een herlading of een nieuw tabblad. */
@@ -252,8 +263,9 @@ export class AuthService {
         return;
       }
 
-      // De rol komt uit het code-document, niet uit de browseropslag: is de rol
-      // ingetrokken of gewijzigd, dan geldt de nieuwe.
+      // De rol en personeelsidentiteit komen uit het code-document, niet uit
+      // de browseropslag: is de code gewijzigd of voorzien van een afkorting,
+      // dan geldt de waarde uit Firestore.
       const data = snap.data() as AccessCode;
       const bijgewerkt: AuthUser = {
         name: data.ownerName,
@@ -261,6 +273,7 @@ export class AuthService {
         role: data.role,
         vak: data.vak,
         code: snap.id,
+        ...(data.docentAfkorting ? { docentAfkorting: data.docentAfkorting } : {}),
       };
 
       await this.schrijfSessie(uid, bijgewerkt);

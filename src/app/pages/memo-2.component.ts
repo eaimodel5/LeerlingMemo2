@@ -7,7 +7,7 @@ import { AuthService } from '../services/auth.service';
 import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
 import { parseCsv, headersMatch } from '../utils/csv';
-import { zelfdeEmail } from '../utils/taak-status';
+import { filterVoorDocent, komtDocentOvereen, bouwDocentIdentiteitVelden } from '../utils/docent-identiteit';
 import { wachtOpOpslag, Melding, MELDING_BEVESTIGD, MELDING_WACHT, meldingBijFout } from '../utils/opslag';
 
 @Component({
@@ -558,8 +558,8 @@ export class Memo2Component {
     // collega uit de lijst kiezen en dus een memo op andermans naam schrijven.
     // Mentor, coordinator en beheerder houden het volledige overzicht.
     const gebruiker = this.authService.currentUser();
-    if (gebruiker?.role === 'Docent' && gebruiker.email) {
-      const eigen = alle.filter(dv => zelfdeEmail(dv.docentEmail, gebruiker.email));
+    if (gebruiker?.role === 'Docent') {
+      const eigen = filterVoorDocent(alle, gebruiker);
       // Geen koppeling gevonden: niet blokkeren, wel uitleggen (zie nietGekoppeld).
       return eigen.length > 0 ? eigen : alle;
     }
@@ -573,11 +573,11 @@ export class Memo2Component {
    */
   nietGekoppeld = computed(() => {
     const gebruiker = this.authService.currentUser();
-    if (gebruiker?.role !== 'Docent' || !gebruiker.email) return false;
+    if (gebruiker?.role !== 'Docent') return false;
     const klas = this.formValues().klas;
     if (!klas) return false;
     return !this.dataService.docentVakken().some(dv =>
-      dv.actief && dv.schooljaar === '2026-2027' && dv.klas === klas && zelfdeEmail(dv.docentEmail, gebruiker.email));
+      dv.actief && dv.schooljaar === '2026-2027' && dv.klas === klas && komtDocentOvereen(dv, gebruiker));
   });
 
   bestaandeMemo = computed(() => {
@@ -591,26 +591,28 @@ export class Memo2Component {
 
     let docentEmail = '';
     let docentNaam = '';
+    let docentAfkorting = '';
     let vak = '';
 
     if (docentVakId === 'custom') {
       docentNaam = vals.customDocentNaam || this.authService.currentUser()?.name || '';
       vak = vals.customVak || this.authService.currentUser()?.vak || '';
       docentEmail = this.authService.currentUser()?.email || '';
+      docentAfkorting = this.authService.currentUser()?.docentAfkorting || '';
     } else {
       const dv = this.dataService.docentVakken().find(d => d.id === docentVakId);
       if (!dv) return null;
       docentNaam = dv.docentNaam;
       docentEmail = dv.docentEmail;
+      docentAfkorting = dv.docentAfkorting || '';
       vak = dv.vak;
     }
 
     if (!vak) return null;
 
-    const zelfdeDocent = (m: { docentEmail?: string; docentNaam?: string }) =>
-      docentEmail
-        ? zelfdeEmail(m.docentEmail, docentEmail)
-        : (m.docentNaam || '').trim().toLowerCase() === docentNaam.trim().toLowerCase();
+    const doelDocent = { docentEmail, docentAfkorting };
+    const zelfdeDocent = (m: { docentEmail?: string; docentNaam?: string; docentAfkorting?: string }) =>
+      komtDocentOvereen(m, doelDocent) || (!m.docentAfkorting && !m.docentEmail && (m.docentNaam || '').trim().toLowerCase() === docentNaam.trim().toLowerCase());
 
     return this.dataService.memoTW1TW2().find(m =>
       m.schooljaar === (vals.schooljaar || '2026-2027') &&
@@ -690,19 +692,27 @@ export class Memo2Component {
 
     let docentNaam = '';
     let docentEmail = '';
+    let docentAfkorting = '';
     let vak = '';
 
     if (val.docentVakId === 'custom') {
       docentNaam = val.customDocentNaam || this.authService.currentUser()?.name || 'Onbekend';
       vak = val.customVak || this.authService.currentUser()?.vak || 'Onbekend';
       docentEmail = this.authService.currentUser()?.email || '';
+      docentAfkorting = this.authService.currentUser()?.docentAfkorting || '';
     } else {
       const docentVak = this.filteredDocentVakken().find(dv => dv.id === val.docentVakId);
       if (!docentVak) return;
       docentNaam = docentVak.docentNaam;
       docentEmail = docentVak.docentEmail;
+      docentAfkorting = docentVak.docentAfkorting || '';
       vak = docentVak.vak;
     }
+
+    const idVelden = bouwDocentIdentiteitVelden({
+      docentAfkorting: docentAfkorting || this.authService.currentUser()?.docentAfkorting,
+      docentEmail: docentEmail || this.authService.currentUser()?.email,
+    });
 
     const memoData: any = {
       schooljaar: val.schooljaar!,
@@ -711,7 +721,8 @@ export class Memo2Component {
       leerling: leerling.leerling,
       klas: leerling.klas,
       docentNaam: docentNaam,
-      docentEmail: docentEmail,
+      docentEmail: idVelden.docentEmail,
+      ...(idVelden.docentAfkorting ? { docentAfkorting: idVelden.docentAfkorting } : {}),
       vak: vak,
       
       aandachtInhoudelijkBegrip: !!val.aandachtInhoudelijkBegrip,
@@ -727,10 +738,10 @@ export class Memo2Component {
       emc: val.emc as any,
       docentActie: val.docentActie!,
       status: val.status as any,
-      aangemaaktDoor: this.authService.currentUser()?.email || docentEmail || 'docent@school.nl',
+      aangemaaktDoor: this.authService.currentUser()?.email || idVelden.docentEmail || 'docent@school.nl',
       aangemaaktOp: new Date().toISOString(),
       gewijzigdOp: new Date().toISOString(),
-      gewijzigdDoor: this.authService.currentUser()?.email || docentEmail || ''
+      gewijzigdDoor: this.authService.currentUser()?.email || idVelden.docentEmail || ''
     };
 
     if (val.reflectieOpVorigePeriode) {
@@ -741,10 +752,9 @@ export class Memo2Component {
     // in plaats van er een tweede naast te zetten (bijv. eerst Concept, dan Definitief).
     // De docent hoort in de sleutel. Zonder hem overschreven twee docenten die
     // hetzelfde vak aan dezelfde leerling geven elkaars memo.
-    const zelfdeDocent = (m: { docentEmail?: string; docentNaam?: string }) =>
-      docentEmail
-        ? zelfdeEmail(m.docentEmail, docentEmail)
-        : (m.docentNaam || '').trim().toLowerCase() === docentNaam.trim().toLowerCase();
+    const doelDocent = { docentEmail: idVelden.docentEmail, docentAfkorting: idVelden.docentAfkorting };
+    const zelfdeDocent = (m: { docentEmail?: string; docentNaam?: string; docentAfkorting?: string }) =>
+      komtDocentOvereen(m, doelDocent) || (!m.docentAfkorting && !m.docentEmail && (m.docentNaam || '').trim().toLowerCase() === docentNaam.trim().toLowerCase());
 
     const bestaandeMemo = this.dataService.memoTW1TW2().find(m =>
       m.schooljaar === memoData.schooljaar &&
@@ -779,7 +789,7 @@ export class Memo2Component {
             t.periode === 'TW2' &&
             t.schooljaar === memoData.schooljaar &&
             t.vak.trim().toLowerCase() === memoData.vak.trim().toLowerCase() &&
-            docentEmail && zelfdeEmail(t.docentEmail, docentEmail)
+            komtDocentOvereen(t, doelDocent)
           );
 
       if (passendeTaak?.id) {

@@ -1,9 +1,9 @@
 import { Component, OnDestroy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AccessCode, UserRole } from '../models/data.models';
+import { AccessCode, Docent, UserRole } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
-import { parseCsv, downloadCsv, headersMatch } from '../utils/csv';
-import { collection, addDoc, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBatch, getDocs } from 'firebase/firestore';
+import { parseCsv, downloadCsv } from '../utils/csv';
+import { collection, setDoc, onSnapshot, query, orderBy, deleteDoc, doc, writeBatch, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { Melding } from '../utils/opslag';
 import {
@@ -17,7 +17,14 @@ import {
   veldenVoorActiveren,
   veldenVoorIntrekken,
 } from '../utils/toegangscode';
+import {
+  afkortingIsGeldig,
+  normaliseerAfkorting,
+  toonAfkorting,
+  zelfdeAfkorting,
+} from '../utils/docent-afkorting';
 import { AuthService } from '../services/auth.service';
+import { DataService } from '../services/data.service';
 
 @Component({
   selector: 'app-superuser',
@@ -246,7 +253,18 @@ import { AuthService } from '../services/auth.service';
                         </div>
                       </td>
                       <td class="px-6 py-4">
-                        <div class="font-bold text-slate-800">{{ code.ownerName }}</div>
+                        <div class="flex items-center gap-2">
+                          <span class="font-bold text-slate-800">{{ code.ownerName }}</span>
+                          @if (code.docentAfkorting) {
+                            <span class="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200" title="Docentafkorting">
+                              {{ toon(code.docentAfkorting) }}
+                            </span>
+                          } @else {
+                            <span class="text-[10px] text-slate-400 italic" title="Code van vóór PR 6 zonder gekoppelde docent">
+                              Legacy
+                            </span>
+                          }
+                        </div>
                         <div class="text-xs text-slate-500">{{ code.ownerEmail }}</div>
                       </td>
                       <td class="px-6 py-4">
@@ -410,9 +428,26 @@ import { AuthService } from '../services/auth.service';
                 </div>
 
                 <div>
-                  <label for="name-input" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Naam</label>
-                  <input id="name-input" [value]="newCodeName()" (input)="onNameInput($event)" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#e87700]/20" placeholder="Bijv. Jan de Vries">
+                  <label for="docent-select" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Docent (Personeelslid)</label>
+                  <select id="docent-select" [value]="newCodeAfkorting()" (change)="onDocentChange($event)" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#e87700]/20">
+                    <option value="">-- Kies een docent --</option>
+                    @for (docent of actieveDocenten(); track docent.afkorting) {
+                      <option [value]="docent.afkorting">{{ toonDocentOptie(docent) }}</option>
+                    }
+                  </select>
+                  @if (actieveDocenten().length === 0) {
+                    <p class="text-xs text-amber-600 mt-1">Geen actieve docenten gevonden. Voeg eerst docenten toe via Docentenbeheer.</p>
+                  }
                 </div>
+
+                @if (newCodeName()) {
+                  <div>
+                    <span class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Gekoppelde Naam</span>
+                    <div class="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-800 font-medium text-sm">
+                      {{ newCodeName() }}
+                    </div>
+                  </div>
+                }
 
                 <div>
                   <label for="email-input" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Email</label>
@@ -459,17 +494,19 @@ import { AuthService } from '../services/auth.service';
               <table class="w-full text-left text-sm whitespace-nowrap">
                 <thead class="bg-slate-100 text-slate-600 font-bold sticky top-0">
                   <tr>
+                    <th class="px-4 py-3 border-b border-slate-200">Afkorting</th>
+                    <th class="px-4 py-3 border-b border-slate-200">Docent</th>
                     <th class="px-4 py-3 border-b border-slate-200">Email</th>
-                    <th class="px-4 py-3 border-b border-slate-200">Naam</th>
                     <th class="px-4 py-3 border-b border-slate-200">Rol</th>
                     <th class="px-4 py-3 border-b border-slate-200">Vak</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100">
-                  @for (row of csvPreviewData(); track row.ownerEmail) {
+                  @for (row of csvPreviewData(); track (row.docentAfkorting + row.ownerEmail)) {
                     <tr class="hover:bg-slate-50">
-                      <td class="px-4 py-3 text-slate-600">{{ row.ownerEmail }}</td>
+                      <td class="px-4 py-3 font-mono font-bold text-slate-800">{{ toon(row.docentAfkorting) }}</td>
                       <td class="px-4 py-3 font-medium text-slate-900">{{ row.ownerName }}</td>
+                      <td class="px-4 py-3 text-slate-600">{{ row.ownerEmail }}</td>
                       <td class="px-4 py-3 text-blue-600 font-medium">{{ row.role }}</td>
                       <td class="px-4 py-3 text-slate-500">{{ row.vak || '-' }}</td>
                     </tr>
@@ -499,12 +536,20 @@ import { AuthService } from '../services/auth.service';
 })
 export class SuperuserComponent implements OnDestroy {
   auth = inject(AuthService);
+  dataService = inject(DataService);
   codes = signal<AccessCode[]>([]);
   searchQuery = signal('');
   selectedRoleFilter = signal<string>('ALLE');
   showCreate = signal(false);
   csvPreviewData = signal<any[] | null>(null);
   melding = signal<Melding | null>(null);
+
+  docenten = this.dataService.docenten;
+  actieveDocenten = computed(() =>
+    this.docenten()
+      .filter(d => d.actief)
+      .sort((a, b) => a.afkorting.localeCompare(b.afkorting))
+  );
 
   superuserCodes = computed(() => this.codes().filter(c => c.role === 'Superuser'));
 
@@ -590,16 +635,36 @@ export class SuperuserComponent implements OnDestroy {
   isCleaning = signal(false);
 
   newCodeRole = signal<UserRole>('Docent');
+  newCodeAfkorting = signal('');
   newCodeName = signal('');
   newCodeEmail = signal('');
   newCodeVak = signal('');
 
+  geselecteerdeDocent = computed(() =>
+    this.docenten().find(d => zelfdeAfkorting(d.afkorting, this.newCodeAfkorting()))
+  );
+
+  toon(afkorting: string): string {
+    return toonAfkorting(afkorting);
+  }
+
+  toonDocentOptie(docent: Docent): string {
+    return `${toonAfkorting(docent.afkorting)} - ${docent.naam}`;
+  }
+
+  onDocentChange(event: Event) {
+    const afk = (event.target as HTMLSelectElement).value;
+    this.newCodeAfkorting.set(afk);
+    const docent = this.actieveDocenten().find(d => zelfdeAfkorting(d.afkorting, afk));
+    this.newCodeName.set(docent ? docent.naam : '');
+  }
+
   downloadTemplate() {
     downloadCsv('Template_AccessCodes.csv', [
-      ['Email', 'Naam', 'Rol', 'Vak'],
-      ['j.devries@school.nl', 'Jan de Vries', 'Docent', 'Wiskunde'],
-      ['m.pietersen@school.nl', 'Marieke Pietersen', 'Mentor', ''],
-      ['p.jansen@school.nl', 'Peter Jansen', 'Coordinator', '']
+      ['Afkorting', 'Email', 'Rol', 'Vak'],
+      ['vis', 'visser@school.nl', 'Docent', 'Wiskunde'],
+      ['pie', 'pietersen@school.nl', 'Mentor', ''],
+      ['jan', 'jansen@school.nl', 'Coordinator', '']
     ]);
   }
 
@@ -633,43 +698,76 @@ export class SuperuserComponent implements OnDestroy {
       const rows = parseCsv(text);
       if (rows.length < 1) return;
 
-      const expectedHeaders = ['Email', 'Naam', 'Rol', 'Vak'];
+      const headers = rows[0].map(h => h.replace(/^\uFEFF/, '').trim().toLowerCase());
+      const afkIdx = headers.indexOf('afkorting');
+      const emailIdx = headers.indexOf('email');
+      const rolIdx = headers.indexOf('rol');
+      const vakIdx = headers.indexOf('vak');
 
-      if (!headersMatch(rows[0], expectedHeaders)) {
+      if (afkIdx === -1 || emailIdx === -1 || rolIdx === -1) {
         this.melding.set({
           soort: 'fout',
-          tekst: 'Kolomnamen komen niet overeen met het sjabloon (verwacht: Email, Naam, Rol, Vak).'
+          tekst: 'Kolomnamen komen niet overeen met het sjabloon (verwacht minimaal: Afkorting, Email, Rol, Vak).'
         });
         event.target.value = '';
         return;
       }
 
       const rowsToImport = [];
+      const fouten: string[] = [];
+
       for (let i = 1; i < rows.length; i++) {
         const columns = rows[i];
-        if (columns.length < 3) continue;
+        const rawAfkorting = columns[afkIdx]?.trim() || '';
+        const email = columns[emailIdx]?.trim() || '';
+        const rol = columns[rolIdx]?.trim() as UserRole;
+        const vak = vakIdx !== -1 ? (columns[vakIdx]?.trim() || '') : '';
 
-        const email = columns[0];
-        const naam = columns[1];
-        const rol = columns[2] as UserRole;
-        const vak = columns[3] || '';
+        if (!rawAfkorting || !email || !['Docent', 'Mentor', 'Coordinator', 'Superuser'].includes(rol)) {
+          fouten.push(`Rij ${i + 1}: ontbrekende gegevens of ongeldige rol.`);
+          continue;
+        }
 
-        if (!email || !naam || !['Docent', 'Mentor', 'Coordinator'].includes(rol)) {
-            continue;
+        if (!afkortingIsGeldig(rawAfkorting)) {
+          fouten.push(`Rij ${i + 1}: ongeldige afkorting "${rawAfkorting}".`);
+          continue;
+        }
+
+        const norm = normaliseerAfkorting(rawAfkorting);
+        const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+
+        if (!docent) {
+          fouten.push(`Rij ${i + 1}: docent met afkorting "${rawAfkorting}" niet gevonden in Docentenbeheer.`);
+          continue;
+        }
+
+        if (!docent.actief) {
+          fouten.push(`Rij ${i + 1}: docent "${docent.naam}" (${toonAfkorting(norm)}) is inactief.`);
+          continue;
         }
 
         rowsToImport.push({
+          docentAfkorting: norm,
+          ownerName: docent.naam,
           ownerEmail: email,
-          ownerName: naam,
           role: rol,
-          vak: vak
+          vak: rol === 'Docent' ? vak : '',
         });
       }
 
       if (rowsToImport.length > 0) {
         this.csvPreviewData.set(rowsToImport);
+        if (fouten.length > 0) {
+          this.melding.set({
+            soort: 'fout',
+            tekst: `${fouten.length} rijen overgeslagen wegens fouten. Eerste fout: ${fouten[0]}`
+          });
+        }
       } else {
-        this.melding.set({ soort: 'fout', tekst: 'Geen geldige rijen gevonden in het CSV-bestand.' });
+        this.melding.set({
+          soort: 'fout',
+          tekst: fouten.length > 0 ? fouten[0] : 'Geen geldige rijen gevonden in het CSV-bestand.'
+        });
       }
       
       event.target.value = '';
@@ -691,18 +789,19 @@ export class SuperuserComponent implements OnDestroy {
     for (const row of data) {
       const code = this.generateCode();
       const codeRef = doc(db, 'codes', code);
-      const newCode: any = {
+      const newCode: AccessCode = {
         id: code,
         code,
         role: row.role,
         ownerName: row.ownerName,
         ownerEmail: row.ownerEmail,
+        docentAfkorting: row.docentAfkorting,
         createdAt: new Date().toISOString(),
         active: NIEUWE_CODE_ACTIEF,
         used: false
       };
 
-      if (row.role === 'Docent') {
+      if (row.role === 'Docent' && row.vak) {
         newCode.vak = row.vak;
       }
 
@@ -732,7 +831,8 @@ export class SuperuserComponent implements OnDestroy {
           (c.ownerName && c.ownerName.toLowerCase().includes(q)) || 
           (c.ownerEmail && c.ownerEmail.toLowerCase().includes(q)) || 
           (c.code && c.code.toLowerCase().includes(q)) ||
-          (c.vak && c.vak.toLowerCase().includes(q))
+          (c.vak && c.vak.toLowerCase().includes(q)) ||
+          (c.docentAfkorting && c.docentAfkorting.toLowerCase().includes(q))
         );
       })
       .sort((a,b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -740,6 +840,7 @@ export class SuperuserComponent implements OnDestroy {
 
   openCreateSuperuserModal() {
     this.newCodeRole.set('Superuser');
+    this.newCodeAfkorting.set('');
     this.newCodeName.set('');
     this.newCodeEmail.set('');
     this.newCodeVak.set('');
@@ -784,7 +885,14 @@ export class SuperuserComponent implements OnDestroy {
   }
 
   isValid() {
-    return this.newCodeName() && this.newCodeEmail() && (this.newCodeRole() !== 'Docent' || this.newCodeVak());
+    const docent = this.geselecteerdeDocent();
+    const geldigeDocent = Boolean(docent && docent.actief && afkortingIsGeldig(docent.afkorting));
+    return Boolean(
+      geldigeDocent &&
+      this.newCodeName() &&
+      this.newCodeEmail() &&
+      (this.newCodeRole() !== 'Docent' || this.newCodeVak())
+    );
   }
 
   filterByRole(role: UserRole) {
@@ -804,12 +912,20 @@ export class SuperuserComponent implements OnDestroy {
   async createCode() {
     if (!this.isValid()) return;
 
+    const docent = this.geselecteerdeDocent();
+    if (!docent || !docent.actief) {
+      this.melding.set({ soort: 'fout', tekst: 'Kies een geldige, actieve docent.' });
+      return;
+    }
+
     const code = this.generateCode();
-    const newCode: any = {
+    const newCode: AccessCode = {
+      id: code,
       code,
       role: this.newCodeRole(),
-      ownerName: this.newCodeName(),
+      ownerName: docent.naam,
       ownerEmail: this.newCodeEmail(),
+      docentAfkorting: normaliseerAfkorting(docent.afkorting),
       createdAt: new Date().toISOString(),
       active: NIEUWE_CODE_ACTIEF,
       used: false
@@ -820,7 +936,7 @@ export class SuperuserComponent implements OnDestroy {
     }
 
     try {
-      await setDoc(doc(db, 'codes', code), { ...newCode, id: code });
+      await setDoc(doc(db, 'codes', code), newCode);
       this.showCreate.set(false);
       this.resetForm();
       this.melding.set({ soort: 'ok', tekst: `Toegangscode ${code} is succesvol gegenereerd!` });
@@ -913,6 +1029,7 @@ export class SuperuserComponent implements OnDestroy {
   }
 
   private resetForm() {
+    this.newCodeAfkorting.set('');
     this.newCodeName.set('');
     this.newCodeEmail.set('');
     this.newCodeVak.set('');

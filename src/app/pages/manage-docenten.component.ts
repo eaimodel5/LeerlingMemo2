@@ -241,6 +241,9 @@ export class ManageDocentenComponent {
     const perDocent = new Map<string, OntbrekendeDocent>();
 
     for (const koppeling of this.dataService.docentVakken()) {
+      if (koppeling.docentAfkorting && bekend.some(d => zelfdeAfkorting(d.afkorting, koppeling.docentAfkorting))) {
+        continue;
+      }
       const email = (koppeling.docentEmail ?? '').trim();
       const naam = (koppeling.docentNaam ?? '').trim();
       if (!naam && !email) continue;

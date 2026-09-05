@@ -7,6 +7,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
 import { wachtOpOpslag, Melding, MELDING_BEVESTIGD, MELDING_WACHT, meldingBijFout } from '../utils/opslag';
 import { MemoTW1TW2, MemoTW3 } from '../models/data.models';
+import { bouwDocentIdentiteitVelden } from '../utils/docent-identiteit';
 
 export type DocentMemo = MemoTW1TW2 | MemoTW3;
 
@@ -829,6 +830,7 @@ export class MentorPrepComponent {
 
     let docentNaam = '';
     let docentEmail = '';
+    let docentAfkorting: string | undefined;
     let vak = '';
 
     if (val.docentVakId === 'custom') {
@@ -841,7 +843,9 @@ export class MentorPrepComponent {
       if (!dv) return;
       vak = dv.vak;
       docentNaam = dv.docentNaam;
-      docentEmail = dv.docentEmail;
+      const idVelden = bouwDocentIdentiteitVelden(dv);
+      docentEmail = idVelden.docentEmail;
+      docentAfkorting = idVelden.docentAfkorting;
     }
 
     const periode = this.form.value.periode as 'TW1' | 'TW2' | 'TW3';
@@ -858,6 +862,7 @@ export class MentorPrepComponent {
           klas: l.klas,
           docentNaam,
           docentEmail,
+          ...(docentAfkorting ? { docentAfkorting } : {}),
           vak,
           aandachtInhoudelijkBegrip: false,
           aandachtPlanningOrganisatie: false,
@@ -883,6 +888,7 @@ export class MentorPrepComponent {
           klas: l.klas,
           docentNaam,
           docentEmail,
+          ...(docentAfkorting ? { docentAfkorting } : {}),
           vak,
           aandachtInhoudelijkBegrip: false,
           aandachtPlanningOrganisatie: false,

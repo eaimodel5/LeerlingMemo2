@@ -20,6 +20,13 @@ export interface AccessCode {
   vak?: string;
   createdAt: string;
   /**
+   * De schoolafkorting van de docent (/docenten/{afkorting}).
+   *
+   * Verplicht voor nieuwe codes; optioneel omdat bestaande Firestore-documenten
+   * het veld nog niet hebben.
+   */
+  docentAfkorting?: string;
+  /**
    * Of de code nog gebruikt mag worden. Nieuwe codes krijgen `true`.
    *
    * Optioneel omdat codes van voor deze wijziging het veld niet hebben; die
@@ -58,6 +65,8 @@ export interface DocentTaak {
   leerling: string;
   docentEmail: string;
   docentNaam: string;
+  /** Genormaliseerde docentafkorting (optioneel tijdens de migratiefase). */
+  docentAfkorting?: string;
   vak: string;
   mentorEmail: string;
   /**
@@ -101,6 +110,8 @@ export interface DocentVak {
   id?: string;
   docentNaam: string;
   docentEmail: string;
+  /** Genormaliseerde docentafkorting (optioneel tijdens de migratiefase). */
+  docentAfkorting?: string;
   vak: string;
   klas: string;
   schooljaar: string;
@@ -116,6 +127,8 @@ export interface MemoTW1TW2 {
   klas: string;
   docentNaam: string;
   docentEmail: string;
+  /** Genormaliseerde docentafkorting (optioneel tijdens de migratiefase). */
+  docentAfkorting?: string;
   vak: string;
   aandachtInhoudelijkBegrip: boolean;
   aandachtPlanningOrganisatie: boolean;
@@ -146,6 +159,8 @@ export interface MemoTW3 {
   klas: string;
   docentNaam: string;
   docentEmail: string;
+  /** Genormaliseerde docentafkorting (optioneel tijdens de migratiefase). */
+  docentAfkorting?: string;
   vak: string;
   aandachtInhoudelijkBegrip: boolean;
   aandachtPlanningOrganisatie: boolean;

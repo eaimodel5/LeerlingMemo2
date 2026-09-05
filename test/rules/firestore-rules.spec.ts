@@ -361,3 +361,89 @@ describe('sessies inzien', () => {
     await assertSucceeds(getDocs(collection(beheerder, 'userSessions')));
   });
 });
+
+describe('docentafkorting in code en sessie (PR 6)', () => {
+  it('A. Legacycode zonder docentAfkorting -> sessie zonder docentAfkorting toegestaan', async () => {
+    await seed(omgeving, 'codes/LEGACY-1', codeDoc({ code: 'LEGACY-1', role: 'Docent' }));
+    const db = alsAangemeld(omgeving, 'usr-legacy');
+    await assertSucceeds(
+      setDoc(doc(db, 'userSessions', 'usr-legacy'), sessieDoc({ code: 'LEGACY-1', role: 'Docent' }))
+    );
+  });
+
+  it('B. Legacycode zonder docentAfkorting -> normale gegevensrechten blijven werken', async () => {
+    const db = await alsGebruiker(omgeving, { uid: 'usr-leg-b', code: 'LEG-B' });
+    await seed(omgeving, 'leerlingen/l1', leerlingDoc());
+    await assertSucceeds(getDoc(doc(db, 'leerlingen', 'l1')));
+  });
+
+  it('C. Code met docentAfkorting "vis" -> sessie met "vis" toegestaan', async () => {
+    await seed(omgeving, 'codes/VIS-1', codeDoc({ code: 'VIS-1', role: 'Docent', docentAfkorting: 'vis' }));
+    const db = alsAangemeld(omgeving, 'usr-vis');
+    await assertSucceeds(
+      setDoc(doc(db, 'userSessions', 'usr-vis'), sessieDoc({ code: 'VIS-1', role: 'Docent', docentAfkorting: 'vis' }))
+    );
+  });
+
+  it('D. Code met docentAfkorting "vis" -> sessie met "jan" geweigerd', async () => {
+    await seed(omgeving, 'codes/VIS-1', codeDoc({ code: 'VIS-1', role: 'Docent', docentAfkorting: 'vis' }));
+    const db = alsAangemeld(omgeving, 'usr-vis-fraud');
+    await assertFails(
+      setDoc(doc(db, 'userSessions', 'usr-vis-fraud'), sessieDoc({ code: 'VIS-1', role: 'Docent', docentAfkorting: 'jan' }))
+    );
+  });
+
+  it('E. Code met docentAfkorting "vis" -> sessie zonder docentAfkorting geweigerd', async () => {
+    await seed(omgeving, 'codes/VIS-1', codeDoc({ code: 'VIS-1', role: 'Docent', docentAfkorting: 'vis' }));
+    const db = alsAangemeld(omgeving, 'usr-vis-empty');
+    await assertFails(
+      setDoc(doc(db, 'userSessions', 'usr-vis-empty'), sessieDoc({ code: 'VIS-1', role: 'Docent' }))
+    );
+  });
+
+  it('F. Legacycode zonder docentAfkorting -> sessie die zelf "vis" toevoegt geweigerd', async () => {
+    await seed(omgeving, 'codes/LEGACY-2', codeDoc({ code: 'LEGACY-2', role: 'Docent' }));
+    const db = alsAangemeld(omgeving, 'usr-leg-forge');
+    await assertFails(
+      setDoc(doc(db, 'userSessions', 'usr-leg-forge'), sessieDoc({ code: 'LEGACY-2', role: 'Docent', docentAfkorting: 'vis' }))
+    );
+  });
+
+  it('G. Ongeldige bestaande sessie waarbij rol klopt maar docentAfkorting afwijkt -> normale toegang geweigerd', async () => {
+    const db = await alsGebruiker(omgeving, {
+      uid: 'usr-mismatch',
+      code: 'VIS-MIS',
+      docentAfkorting: 'vis',
+      sessieDocentAfkorting: 'jan',
+    });
+    await seed(omgeving, 'leerlingen/l1', leerlingDoc());
+    await assertFails(getDoc(doc(db, 'leerlingen', 'l1')));
+  });
+
+  it('H. Intrekken van een code met docentAfkorting -> bestaande sessie verliest toegang', async () => {
+    const db = await alsGebruiker(omgeving, {
+      uid: 'usr-vis-revoke',
+      code: 'VIS-REV',
+      docentAfkorting: 'vis',
+    });
+    await seed(omgeving, 'leerlingen/l1', leerlingDoc());
+    await assertSucceeds(getDoc(doc(db, 'leerlingen', 'l1')));
+
+    await trekCodeIn(omgeving, 'VIS-REV');
+    await assertFails(getDoc(doc(db, 'leerlingen', 'l1')));
+  });
+
+  it('I. Opnieuw activeren met geldige waarden -> toegang kan weer correct tot stand komen', async () => {
+    const db = await alsGebruiker(omgeving, {
+      uid: 'usr-vis-reactivate',
+      code: 'VIS-REACT',
+      docentAfkorting: 'vis',
+      ingetrokken: true,
+    });
+    await seed(omgeving, 'leerlingen/l1', leerlingDoc());
+    await assertFails(getDoc(doc(db, 'leerlingen', 'l1')));
+
+    await seed(omgeving, 'codes/VIS-REACT', codeDoc({ code: 'VIS-REACT', role: 'Docent', docentAfkorting: 'vis', active: true }));
+    await assertSucceeds(getDoc(doc(db, 'leerlingen', 'l1')));
+  });
+});

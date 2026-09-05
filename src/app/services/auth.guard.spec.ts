@@ -20,15 +20,25 @@ let gegaanNaar: string[];
 
 function zetOp(rol: UserRole | null) {
   auth = new NepAuthService();
+
   if (rol) auth.logIn(rol);
+
   gegaanNaar = [];
 
   TestBed.resetTestingModule();
+
   TestBed.configureTestingModule({
-    providers: [provideRouter([]), { provide: AuthService, useValue: auth as unknown as AuthService }],
+    providers: [
+      provideRouter([]),
+      {
+        provide: AuthService,
+        useValue: auth as unknown as AuthService,
+      },
+    ],
   });
 
   const router = TestBed.inject(Router);
+
   router.navigate = ((commands: unknown[]) => {
     gegaanNaar.push(String(commands[0]));
     return Promise.resolve(true);
@@ -42,11 +52,17 @@ function mag(guard: typeof authGuard): boolean {
   );
 }
 
-const ROLLEN: UserRole[] = ['Docent', 'Mentor', 'Coordinator', 'Superuser'];
+const ROLLEN: UserRole[] = [
+  'Docent',
+  'Mentor',
+  'Coordinator',
+  'Superuser',
+];
 
 describe('authGuard: alleen ingelogd', () => {
   it('stuurt een uitgelogde bezoeker naar de inlogpagina', () => {
     zetOp(null);
+
     expect(mag(authGuard)).toBe(false);
     expect(gegaanNaar).toEqual(['/login']);
   });
@@ -54,7 +70,11 @@ describe('authGuard: alleen ingelogd', () => {
   it('laat elke ingelogde rol door', () => {
     for (const rol of ROLLEN) {
       zetOp(rol);
-      expect(mag(authGuard), rol).toBe(true);
+
+      expect(
+        mag(authGuard),
+        rol,
+      ).toBe(true);
     }
   });
 });
@@ -62,19 +82,29 @@ describe('authGuard: alleen ingelogd', () => {
 describe('mentorOrHigherGuard: de mentorschermen', () => {
   it('houdt een vakdocent tegen', () => {
     zetOp('Docent');
+
     expect(mag(mentorOrHigherGuard)).toBe(false);
     expect(gegaanNaar).toEqual(['/']);
   });
 
   it('laat mentor, coordinator en beheerder door', () => {
-    for (const rol of ['Mentor', 'Coordinator', 'Superuser'] as const) {
+    for (const rol of [
+      'Mentor',
+      'Coordinator',
+      'Superuser',
+    ] as const) {
       zetOp(rol);
-      expect(mag(mentorOrHigherGuard), rol).toBe(true);
+
+      expect(
+        mag(mentorOrHigherGuard),
+        rol,
+      ).toBe(true);
     }
   });
 
   it('stuurt een uitgelogde bezoeker naar de inlogpagina, niet naar de startpagina', () => {
     zetOp(null);
+
     expect(mag(mentorOrHigherGuard)).toBe(false);
     expect(gegaanNaar).toEqual(['/login']);
   });
@@ -84,50 +114,116 @@ describe('superuserGuard: het beheerdersdeel', () => {
   it('laat alleen de beheerder door', () => {
     for (const rol of ROLLEN) {
       zetOp(rol);
-      expect(mag(superuserGuard), rol).toBe(rol === 'Superuser');
+
+      expect(
+        mag(superuserGuard),
+        rol,
+      ).toBe(rol === 'Superuser');
     }
   });
 });
 
 describe('rechtGuard: per handeling', () => {
   const verwacht: [Recht, UserRole[]][] = [
-    ['leerlingenBewerken', ['Mentor', 'Coordinator', 'Superuser']],
-    ['docentkoppelingBewerken', ['Mentor', 'Coordinator', 'Superuser']],
-    ['systeembeheer', ['Superuser']],
+    [
+      'leerlingenBewerken',
+      ['Mentor', 'Coordinator', 'Superuser'],
+    ],
+    [
+      'docentkoppelingBewerken',
+      ['Mentor', 'Coordinator', 'Superuser'],
+    ],
+    [
+      'systeembeheer',
+      ['Superuser'],
+    ],
   ];
 
   for (const [recht, toegestaan] of verwacht) {
     it(`${recht}: ${toegestaan.join(', ')}`, () => {
       const guard = rechtGuard(recht);
+
       for (const rol of ROLLEN) {
         zetOp(rol);
-        expect(mag(guard), `${recht} als ${rol}`).toBe(toegestaan.includes(rol));
+
+        expect(
+          mag(guard),
+          `${recht} als ${rol}`,
+        ).toBe(toegestaan.includes(rol));
       }
     });
   }
 });
 
 describe('de routetabel zoals hij hoort te zijn', () => {
-  // Eén overzicht dat leest als de tabel in BEVEILIGING.md, zodat een
+  // Eén overzicht dat leest als de tabel in BEHEER.md, zodat een
   // verschuiving van een guard hier zichtbaar wordt en niet pas in gebruik.
-  const routes: [string, typeof authGuard, UserRole[]][] = [
-    ['/teacher-dashboard', authGuard, ROLLEN],
-    ['/memo-1', authGuard, ROLLEN],
-    ['/mentor-overview', mentorOrHigherGuard, ['Mentor', 'Coordinator', 'Superuser']],
-    ['/mentor-prep', mentorOrHigherGuard, ['Mentor', 'Coordinator', 'Superuser']],
-    ['/progress-plan', mentorOrHigherGuard, ['Mentor', 'Coordinator', 'Superuser']],
-    ['/magister-export', mentorOrHigherGuard, ['Mentor', 'Coordinator', 'Superuser']],
-    ['/manage-students', rechtGuard('leerlingenBewerken'), ['Mentor', 'Coordinator', 'Superuser']],
-    ['/manage-teachers', rechtGuard('docentkoppelingBewerken'), ['Mentor', 'Coordinator', 'Superuser']],
-    ['/beheer', superuserGuard, ['Superuser']],
-    ['/superuser', superuserGuard, ['Superuser']],
+  const routes: [
+    string,
+    typeof authGuard,
+    UserRole[],
+  ][] = [
+    [
+      '/teacher-dashboard',
+      authGuard,
+      ROLLEN,
+    ],
+    [
+      '/memo-1',
+      authGuard,
+      ROLLEN,
+    ],
+    [
+      '/mentor-overview',
+      mentorOrHigherGuard,
+      ['Mentor', 'Coordinator', 'Superuser'],
+    ],
+    [
+      '/mentor-prep',
+      mentorOrHigherGuard,
+      ['Mentor', 'Coordinator', 'Superuser'],
+    ],
+    [
+      '/progress-plan',
+      mentorOrHigherGuard,
+      ['Mentor', 'Coordinator', 'Superuser'],
+    ],
+    [
+      '/magister-export',
+      mentorOrHigherGuard,
+      ['Mentor', 'Coordinator', 'Superuser'],
+    ],
+    [
+      '/manage-students',
+      rechtGuard('leerlingenBewerken'),
+      ['Mentor', 'Coordinator', 'Superuser'],
+    ],
+    [
+      '/manage-teachers',
+      rechtGuard('docentkoppelingBewerken'),
+      ['Mentor', 'Coordinator', 'Superuser'],
+    ],
+    [
+      '/beheer',
+      superuserGuard,
+      ['Superuser'],
+    ],
+    [
+      '/superuser',
+      superuserGuard,
+      ['Superuser'],
+    ],
   ];
 
   for (const [pad, guard, toegestaan] of routes) {
     it(pad, () => {
       for (const rol of ROLLEN) {
         zetOp(rol);
-        expect(mag(guard), `${pad} als ${rol}`).toBe(toegestaan.includes(rol));
+
+        expect(
+          mag(guard),
+          `${pad} als ${rol}`,
+        ).toBe(toegestaan.includes(rol));
       }
     });
   }

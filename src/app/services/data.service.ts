@@ -3,7 +3,7 @@ import { Leerling, Docent, DocentVak, MemoTW1TW2, MemoTW3, MentorVoorbereiding, 
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { auth, db, sessieActief } from './firebase';
 import { Luisteraars, Stopper } from '../utils/luisteraars';
-import { losDocentIdentiteitOp } from '../utils/docent-identiteit';
+import { komtDocentOvereen, losDocentIdentiteitOp } from '../utils/docent-identiteit';
 
 enum OperationType {
   CREATE = 'create',
@@ -486,14 +486,13 @@ export class DataService {
   // --- Docent Taken ---
   async saveDocentTaak(item: Partial<DocentTaak> & { leerlingnummer: string, docentEmail: string, periode: string, schooljaar: string }) {
     try {
-      const email = item.docentEmail.trim().toLowerCase();
-      const existing = this.docentTaken().find(i => 
-        i.leerlingnummer === item.leerlingnummer && 
-        i.docentEmail.trim().toLowerCase() === email &&
-        i.periode === item.periode && 
+      const existing = this.docentTaken().find(i =>
+        i.leerlingnummer === item.leerlingnummer &&
+        komtDocentOvereen(i, item) &&
+        i.periode === item.periode &&
         i.schooljaar === item.schooljaar
       );
-      
+
       if (existing && existing.id) {
         await setDoc(doc(db, 'docentTaken', existing.id), item, { merge: true });
       } else {

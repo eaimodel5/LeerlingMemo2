@@ -90,7 +90,7 @@ export class AuthService {
   // Let op: hier stond een inlog met een vaste gebruikersnaam en wachtwoord.
   // Die waarden kwamen als platte tekst in de JavaScript-bundel terecht en waren
   // dus voor iedere bezoeker zichtbaar. De beheerder logt nu in met een
-  // toegangscode met de rol 'Superuser'; zie BEVEILIGING.md voor het aanmaken
+  // toegangscode met de rol 'Superuser'; zie BEHEER.md voor het aanmaken
   // daarvan. Beschouw het oude wachtwoord als gelekt en gebruik het nergens meer.
 
   /**
@@ -235,9 +235,11 @@ export class AuthService {
       ownerEmail: gebruiker.email,
       startedAt: new Date().toISOString(),
     };
+
     if (gebruiker.docentAfkorting) {
       sessie['docentAfkorting'] = gebruiker.docentAfkorting;
     }
+
     await setDoc(doc(db, 'userSessions', uid), sessie);
   }
 
@@ -252,9 +254,11 @@ export class AuthService {
     }
 
     this.herstelBezig.set(true);
+
     try {
       const uid = await this.meldAanBijFirebase();
       const snap = await getDoc(doc(db, 'codes', gebruiker.code));
+
       // Is de code intussen ingetrokken, dan eindigt de sessie hier. De
       // beveiligingsregels weigeren hem dan toch al; dit zorgt ervoor dat het
       // scherm dat ook laat zien in plaats van overal lege lijsten te tonen.
@@ -267,6 +271,7 @@ export class AuthService {
       // de browseropslag: is de code gewijzigd of voorzien van een afkorting,
       // dan geldt de waarde uit Firestore.
       const data = snap.data() as AccessCode;
+
       const bijgewerkt: AuthUser = {
         name: data.ownerName,
         email: data.ownerEmail,
@@ -279,11 +284,13 @@ export class AuthService {
       await this.schrijfSessie(uid, bijgewerkt);
       this.setUser(bijgewerkt);
       sessieActief.set(true);
+
       // Pas hier, niet in de constructor: nu pas staat vast welke code bij deze
       // sessie hoort.
       this.bewaakEigenCode(snap.id);
     } catch (error) {
       console.error('Sessie herstellen mislukt', error);
+
       // Niet uitloggen: bij een haperende verbinding is de gebruiker morgen
       // gewoon weer wie hij was. De schermen tonen dan de verbindingsmelding.
     } finally {
@@ -293,9 +300,11 @@ export class AuthService {
 
   private setUser(user: AuthUser) {
     this.currentUser.set(user);
+
     if (typeof window === 'undefined') return;
 
     const opgeslagen = JSON.stringify(user);
+
     // Dit tabblad is leidend; de kopie in localStorage dient alleen als
     // startwaarde voor een volgend tabblad.
     sessionStorage.setItem(SLEUTEL, opgeslagen);

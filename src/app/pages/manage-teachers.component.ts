@@ -12,7 +12,7 @@ import {
   afkortingIsGeldig,
   zelfdeAfkorting,
 } from '../utils/docent-afkorting';
-import { zelfdeEmail } from '../utils/taak-status';
+import { losDocentIdentiteitOp, komtDocentOvereen } from '../utils/docent-identiteit';
 
 @Component({
   selector: 'app-manage-teachers',
@@ -405,7 +405,12 @@ export class ManageTeachersComponent {
           continue;
         }
 
-        const identiteitSleutel = afk || rawEmail.toLowerCase() || docentNaam.toLowerCase();
+        const identiteit = losDocentIdentiteitOp({ docentAfkorting: afk, docentEmail: rawEmail });
+        const identiteitSleutel = identiteit.sleutel;
+        if (!identiteitSleutel) {
+          overgeslagen++;
+          continue;
+        }
         const sleutel = `${identiteitSleutel}|${vak.toLowerCase()}|${klas.toLowerCase()}`;
         if (inDitBestand.has(sleutel)) {
           overgeslagen++;
@@ -428,14 +433,7 @@ export class ManageTeachersComponent {
           if (dv.schooljaar !== schooljaar) return false;
           if (dv.klas.toLowerCase() !== klas.toLowerCase()) return false;
           if (dv.vak.toLowerCase() !== vak.toLowerCase()) return false;
-
-          if (afk && dv.docentAfkorting) {
-            return zelfdeAfkorting(dv.docentAfkorting, afk);
-          }
-          if (rawEmail && dv.docentEmail) {
-            return zelfdeEmail(dv.docentEmail, rawEmail);
-          }
-          return dv.docentNaam.trim().toLowerCase() === docentNaam.toLowerCase();
+          return komtDocentOvereen(dv, item);
         });
 
         teSchrijven.push({ id: bestaand?.id, data: item });

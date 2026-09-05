@@ -468,7 +468,8 @@ export class MentorOverviewComponent {
       for (const cel of rij.cellen) {
         if (cel.status !== 'open') continue;
         const id = losDocentIdentiteitOp(cel.kolom);
-        const sleutel = id.sleutel || cel.kolom.docentNaam.trim().toLowerCase();
+        const sleutel = id.sleutel;
+        if (!sleutel) continue;
         const bestaand = perDocent.get(sleutel)
           ?? { naam: cel.kolom.docentNaam, email: cel.kolom.docentEmail, afkorting: id.docentAfkorting ?? undefined, regels: [], taakIds: [] };
         bestaand.regels.push(`${rij.leerling.leerling} — ${cel.kolom.vak}`);

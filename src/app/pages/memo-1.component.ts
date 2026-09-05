@@ -612,7 +612,7 @@ export class Memo1Component {
 
     const doelDocent = { docentEmail, docentAfkorting };
     const zelfdeDocent = (m: { docentEmail?: string; docentNaam?: string; docentAfkorting?: string }) =>
-      komtDocentOvereen(m, doelDocent) || (!m.docentAfkorting && !m.docentEmail && (m.docentNaam || '').trim().toLowerCase() === docentNaam.trim().toLowerCase());
+      komtDocentOvereen(m, doelDocent);
 
     return this.dataService.memoTW1TW2().find(m =>
       m.schooljaar === (vals.schooljaar || '2026-2027') &&
@@ -754,7 +754,7 @@ export class Memo1Component {
     // hetzelfde vak aan dezelfde leerling geven elkaars memo.
     const doelDocent = { docentEmail: idVelden.docentEmail, docentAfkorting: idVelden.docentAfkorting };
     const zelfdeDocent = (m: { docentEmail?: string; docentNaam?: string; docentAfkorting?: string }) =>
-      komtDocentOvereen(m, doelDocent) || (!m.docentAfkorting && !m.docentEmail && (m.docentNaam || '').trim().toLowerCase() === docentNaam.trim().toLowerCase());
+      komtDocentOvereen(m, doelDocent);
 
     const bestaandeMemo = this.dataService.memoTW1TW2().find(m =>
       m.schooljaar === memoData.schooljaar &&

@@ -15,6 +15,7 @@ import {
   uitlegBijAfkortingFout,
   zelfdeAfkorting,
 } from '../utils/docent-afkorting';
+import { analyseerDocentMigratie } from '../utils/docent-migratie';
 
 /**
  * Een docentnaam uit de bestaande koppelingen waar nog geen afkorting bij hoort.
@@ -69,6 +70,52 @@ export interface OntbrekendeDocent {
             <button type="button" (click)="melding.set(null)" class="opacity-60 hover:opacity-100" title="Sluiten">
               <mat-icon class="text-[16px] w-[16px] h-[16px]">close</mat-icon>
             </button>
+          </div>
+        }
+
+        @if (migratieStatus(); as status) {
+          <div
+            class="bg-white rounded-xl border shadow-sm px-5 py-4"
+            [class.border-emerald-200]="status.gereed"
+            [class.border-amber-200]="!status.gereed"
+          >
+            <div class="flex items-start gap-3">
+              <mat-icon
+                class="text-[20px] w-[20px] h-[20px]"
+                [class.text-emerald-600]="status.gereed"
+                [class.text-amber-600]="!status.gereed"
+              >
+                {{ status.gereed ? 'check_circle' : 'warning' }}
+              </mat-icon>
+
+              <div class="min-w-0">
+                <h3 class="text-sm font-bold text-slate-800">
+                  Readiness docentafkortingen
+                </h3>
+
+                @if (status.gereed) {
+                  <p class="text-xs text-emerald-700 mt-1">
+                    Alle {{ status.totaalRecords }} koppelingen hebben een bekende docentafkorting.
+                  </p>
+                } @else {
+                  <p class="text-xs text-amber-800 mt-1">
+                    Nog niet gereed:
+                    {{ status.zonderAfkorting }} zonder afkorting,
+                    {{ status.onbekendeAfkorting }} met een onbekende afkorting
+                    en {{ status.dubbeleAfkortingen.length }} dubbele afkortingen.
+                  </p>
+
+                  @if (status.dubbeleAfkortingen.length > 0) {
+                    <p class="text-xs text-red-700 mt-2">
+                      Dubbel:
+                      <span class="font-mono">
+                        {{ status.dubbeleAfkortingen.join(', ') }}
+                      </span>
+                    </p>
+                  }
+                }
+              </div>
+            </div>
           </div>
         }
 
@@ -305,6 +352,26 @@ export class ManageDocentenComponent {
   docenten = computed(() =>
     [...this.dataService.docenten()].sort((a, b) =>
       a.afkorting.localeCompare(b.afkorting, 'nl'),
+    ),
+  );
+
+  migratieStatus = computed(() =>
+    analyseerDocentMigratie(
+      this.dataService.docenten(),
+      [
+        {
+          naam: 'Docenten/Vakken',
+          records: this.dataService.docentVakken().map(
+            (koppeling, index) => ({
+              id:
+                koppeling.id ??
+                `docentVak:${index}`,
+              docentAfkorting:
+                koppeling.docentAfkorting,
+            }),
+          ),
+        },
+      ],
     ),
   );
 

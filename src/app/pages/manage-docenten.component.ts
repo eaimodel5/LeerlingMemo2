@@ -18,17 +18,18 @@ import {
 import { analyseerDocentMigratie } from '../utils/docent-migratie';
 
 /**
- * Een docentnaam uit de bestaande koppelingen waar nog geen afkorting bij hoort.
+ * Een legacydocent uit bestaande Docenten/Vakken-koppelingen die nog niet
+ * expliciet aan een geldige docentafkorting gekoppeld is.
  *
- * `legacyEmail` komt uit die koppelingen en is er alleen om te laten zien om
- * wie het gaat -- twee collega's kunnen dezelfde achternaam hebben. Hij wordt
- * niet in /docenten opgeslagen; het adres is juist de sleutel waar we vanaf
- * willen.
+ * legacyEmail wordt alleen gebruikt om bestaande legacyrecords van dezelfde
+ * oude identiteit bij elkaar te tonen. Het adres wordt niet naar /docenten
+ * gekopieerd.
  */
 export interface OntbrekendeDocent {
   naam: string;
   legacyEmail: string;
   aantalKoppelingen: number;
+  koppelingIds: string[];
 }
 
 @Component({
@@ -42,32 +43,79 @@ export interface OntbrekendeDocent {
           <h2 class="text-lg font-semibold text-slate-700">Docenten</h2>
           <p class="text-xs text-slate-500">Elke docent met zijn schoolafkorting</p>
         </div>
+
         <div class="flex gap-2">
-          <button (click)="bestand.click()" class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5">
-            <mat-icon class="text-[16px] w-[16px] h-[16px]">upload_file</mat-icon> Importeer CSV
+          <button
+            (click)="bestand.click()"
+            class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5"
+          >
+            <mat-icon class="text-[16px] w-[16px] h-[16px]">upload_file</mat-icon>
+            Importeer CSV
           </button>
-          <input type="file" #bestand class="hidden" accept=".csv" (change)="importeer($event)">
-          <button (click)="downloadSjabloon()" class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5">
-            <mat-icon class="text-[16px] w-[16px] h-[16px]">download</mat-icon> Sjabloon
+
+          <input
+            type="file"
+            #bestand
+            class="hidden"
+            accept=".csv"
+            (change)="importeer($event)"
+          >
+
+          <button
+            (click)="downloadSjabloon()"
+            class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5"
+          >
+            <mat-icon class="text-[16px] w-[16px] h-[16px]">download</mat-icon>
+            Sjabloon
           </button>
-          <button (click)="downloadLijst()" [disabled]="docenten().length === 0" class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50">
-            <mat-icon class="text-[16px] w-[16px] h-[16px]">file_download</mat-icon> Exporteer
+
+          <button
+            (click)="downloadLijst()"
+            [disabled]="docenten().length === 0"
+            class="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-300 rounded-md shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <mat-icon class="text-[16px] w-[16px] h-[16px]">file_download</mat-icon>
+            Exporteer
           </button>
-          <button (click)="nieuw()" class="px-3 py-1.5 text-xs font-medium text-white bg-[#0d1e3a] hover:bg-[#1b3054] rounded-md shadow-sm transition-colors flex items-center gap-1.5">
-            <mat-icon class="text-[16px] w-[16px] h-[16px]">add</mat-icon> Nieuw
+
+          <button
+            (click)="nieuw()"
+            class="px-3 py-1.5 text-xs font-medium text-white bg-[#0d1e3a] hover:bg-[#1b3054] rounded-md shadow-sm transition-colors flex items-center gap-1.5"
+          >
+            <mat-icon class="text-[16px] w-[16px] h-[16px]">add</mat-icon>
+            Nieuw
           </button>
         </div>
       </header>
 
       <div class="flex-1 p-4 sm:p-8 space-y-6 overflow-y-auto">
         @if (melding(); as m) {
-          <div class="p-3 rounded-lg text-xs flex items-start gap-2 border"
-               [class.bg-emerald-50]="m.soort === 'ok'" [class.text-emerald-800]="m.soort === 'ok'" [class.border-emerald-200]="m.soort === 'ok'"
-               [class.bg-amber-50]="m.soort === 'wacht'" [class.text-amber-800]="m.soort === 'wacht'" [class.border-amber-200]="m.soort === 'wacht'"
-               [class.bg-red-50]="m.soort === 'fout'" [class.text-red-700]="m.soort === 'fout'" [class.border-red-200]="m.soort === 'fout'">
-            <mat-icon class="text-[16px] w-[16px] h-[16px] mt-0.5">{{ m.soort === 'fout' ? 'error' : 'info' }}</mat-icon>
-            <span class="flex-1 whitespace-pre-line">{{ m.tekst }}</span>
-            <button type="button" (click)="melding.set(null)" class="opacity-60 hover:opacity-100" title="Sluiten">
+          <div
+            class="p-3 rounded-lg text-xs flex items-start gap-2 border"
+            [class.bg-emerald-50]="m.soort === 'ok'"
+            [class.text-emerald-800]="m.soort === 'ok'"
+            [class.border-emerald-200]="m.soort === 'ok'"
+            [class.bg-amber-50]="m.soort === 'wacht'"
+            [class.text-amber-800]="m.soort === 'wacht'"
+            [class.border-amber-200]="m.soort === 'wacht'"
+            [class.bg-red-50]="m.soort === 'fout'"
+            [class.text-red-700]="m.soort === 'fout'"
+            [class.border-red-200]="m.soort === 'fout'"
+          >
+            <mat-icon class="text-[16px] w-[16px] h-[16px] mt-0.5">
+              {{ m.soort === 'fout' ? 'error' : 'info' }}
+            </mat-icon>
+
+            <span class="flex-1 whitespace-pre-line">
+              {{ m.tekst }}
+            </span>
+
+            <button
+              type="button"
+              (click)="melding.set(null)"
+              class="opacity-60 hover:opacity-100"
+              title="Sluiten"
+            >
               <mat-icon class="text-[16px] w-[16px] h-[16px]">close</mat-icon>
             </button>
           </div>
@@ -123,32 +171,67 @@ export interface OntbrekendeDocent {
           <div class="bg-white border border-amber-200 rounded-xl shadow-sm">
             <div class="px-5 py-4 border-b border-amber-100 bg-amber-50/60 rounded-t-xl">
               <h3 class="text-sm font-bold text-amber-900 flex items-center gap-2">
-                <mat-icon class="text-[18px] w-[18px] h-[18px]">help_outline</mat-icon>
-                {{ zonderAfkorting().length }} {{ zonderAfkorting().length === 1 ? 'docent' : 'docenten' }} uit de koppelingen zonder afkorting
+                <mat-icon class="text-[18px] w-[18px] h-[18px]">
+                  link_off
+                </mat-icon>
+
+                {{ zonderAfkorting().length }}
+                {{
+                  zonderAfkorting().length === 1
+                    ? 'docent nog niet goed gekoppeld'
+                    : 'docenten nog niet goed gekoppeld'
+                }}
               </h3>
+
               <p class="text-xs text-amber-800 mt-1 max-w-3xl">
-                Deze namen staan wel bij Docenten/Vakken maar hebben hier nog geen afkorting.
-                Vul ze zelf in — de afkorting die de school gebruikt is leidend, en die valt
-                niet uit een naam af te leiden.
+                Kies zelf de juiste bestaande docent, of maak bewust een nieuwe
+                docent met de schoolafkorting aan. Een gelijke naam wordt nooit
+                automatisch als bewijs gebruikt.
               </p>
             </div>
 
-            <div class="divide-y divide-slate-100 max-h-72 overflow-y-auto">
-              @for (ontbreekt of zonderAfkorting(); track ontbreekt.naam + ontbreekt.legacyEmail) {
-                <div class="px-5 py-3 flex items-center justify-between gap-4">
+            <div class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
+              @for (
+                ontbreekt of zonderAfkorting();
+                track ontbreekt.naam + ontbreekt.legacyEmail
+              ) {
+                <div class="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div class="min-w-0">
-                    <div class="text-sm font-semibold text-slate-800 truncate">{{ ontbreekt.naam }}</div>
+                    <div class="text-sm font-semibold text-slate-800 truncate">
+                      {{ ontbreekt.naam || 'Naam onbekend' }}
+                    </div>
+
                     <div class="text-xs text-slate-500 truncate">
-                      {{ ontbreekt.legacyEmail || 'geen e-mailadres' }}
+                      {{ ontbreekt.legacyEmail || 'geen legacyadres' }}
                       ·
                       {{ ontbreekt.aantalKoppelingen }}
-                      {{ ontbreekt.aantalKoppelingen === 1 ? 'koppeling' : 'koppelingen' }}
+                      {{
+                        ontbreekt.aantalKoppelingen === 1
+                          ? 'koppeling'
+                          : 'koppelingen'
+                      }}
                     </div>
                   </div>
 
-                  <button (click)="nieuwVoor(ontbreekt)" class="shrink-0 px-2.5 py-1 text-xs font-medium text-amber-800 bg-white hover:bg-amber-50 border border-amber-300 rounded transition-colors">
-                    Afkorting toevoegen
-                  </button>
+                  <div class="flex flex-wrap gap-2 shrink-0">
+                    <button
+                      type="button"
+                      (click)="koppelBestaande(ontbreekt)"
+                      [disabled]="ontbreekt.koppelingIds.length === 0"
+                      class="px-2.5 py-1 text-xs font-medium text-blue-700 bg-white hover:bg-blue-50 border border-blue-300 rounded transition-colors disabled:opacity-40"
+                    >
+                      Koppel bestaande
+                    </button>
+
+                    <button
+                      type="button"
+                      (click)="nieuwVoor(ontbreekt)"
+                      [disabled]="ontbreekt.koppelingIds.length === 0"
+                      class="px-2.5 py-1 text-xs font-medium text-amber-800 bg-white hover:bg-amber-50 border border-amber-300 rounded transition-colors disabled:opacity-40"
+                    >
+                      Nieuwe docent
+                    </button>
+                  </div>
                 </div>
               }
             </div>
@@ -191,7 +274,10 @@ export interface OntbrekendeDocent {
 
             <tbody class="divide-y divide-slate-100">
               @for (docent of zichtbaar(); track docent.afkorting) {
-                <tr class="hover:bg-slate-50 transition-colors" [class.opacity-60]="!docent.actief">
+                <tr
+                  class="hover:bg-slate-50 transition-colors"
+                  [class.opacity-60]="!docent.actief"
+                >
                   <td class="px-6 py-3 font-mono font-bold text-[#e87700]">
                     {{ toon(docent.afkorting) }}
                   </td>
@@ -218,7 +304,9 @@ export interface OntbrekendeDocent {
                       class="text-blue-600 hover:text-blue-800 mx-1"
                       title="Bewerken"
                     >
-                      <mat-icon class="text-[18px] w-[18px] h-[18px]">edit</mat-icon>
+                      <mat-icon class="text-[18px] w-[18px] h-[18px]">
+                        edit
+                      </mat-icon>
                     </button>
 
                     @if (magVerwijderen()) {
@@ -227,7 +315,9 @@ export interface OntbrekendeDocent {
                         class="text-red-500 hover:text-red-700 mx-1"
                         title="Verwijderen"
                       >
-                        <mat-icon class="text-[18px] w-[18px] h-[18px]">delete</mat-icon>
+                        <mat-icon class="text-[18px] w-[18px] h-[18px]">
+                          delete
+                        </mat-icon>
                       </button>
                     }
                   </td>
@@ -236,7 +326,8 @@ export interface OntbrekendeDocent {
                 <tr>
                   <td colspan="4" class="px-6 py-16 text-center text-slate-400 italic">
                     @if (docenten().length === 0) {
-                      Nog geen docenten. Voeg ze los toe, of importeer een CSV met afkorting en naam.
+                      Nog geen docenten. Voeg ze los toe, of importeer een CSV
+                      met afkorting en naam.
                     } @else {
                       Geen docenten gevonden.
                     }
@@ -255,11 +346,27 @@ export interface OntbrekendeDocent {
               {{ f.bestaand ? 'Docent bewerken' : 'Nieuwe docent' }}
             </h3>
 
-            <p class="text-xs text-slate-500 mb-4">
-              De afkorting is de sleutel; die van de school is leidend.
-            </p>
+            @if (f.koppelingIds.length > 0) {
+              <p class="text-xs text-amber-700 mb-4">
+                Na opslaan worden
+                {{ f.koppelingIds.length }}
+                {{
+                  f.koppelingIds.length === 1
+                    ? 'gekozen legacykoppeling'
+                    : 'gekozen legacykoppelingen'
+                }}
+                expliciet aan deze nieuwe docent gekoppeld.
+              </p>
+            } @else {
+              <p class="text-xs text-slate-500 mb-4">
+                De afkorting is de sleutel; die van de school is leidend.
+              </p>
+            }
 
-            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="veld-afkorting">
+            <label
+              class="block text-xs font-bold text-slate-500 uppercase mb-1"
+              for="veld-afkorting"
+            >
               Afkorting
             </label>
 
@@ -274,18 +381,25 @@ export interface OntbrekendeDocent {
 
             @if (f.bestaand) {
               <p class="text-[11px] text-slate-400 mb-3">
-                De afkorting is het kenmerk van deze docent en kan niet worden gewijzigd.
-                Klopt hij niet, verwijder de docent en maak een nieuwe aan.
+                De afkorting is het kenmerk van deze docent en kan niet worden
+                gewijzigd. Klopt hij niet, verwijder de docent en maak een
+                nieuwe aan.
               </p>
             } @else if (afkortingFout(); as fout) {
-              <p class="text-[11px] text-red-600 mb-3">{{ uitleg(fout) }}</p>
+              <p class="text-[11px] text-red-600 mb-3">
+                {{ uitleg(fout) }}
+              </p>
             } @else {
               <p class="text-[11px] text-slate-400 mb-3">
-                Wordt opgeslagen als <span class="font-mono">{{ genormaliseerd() }}</span>.
+                Wordt opgeslagen als
+                <span class="font-mono">{{ genormaliseerd() }}</span>.
               </p>
             }
 
-            <label class="block text-xs font-bold text-slate-500 uppercase mb-1" for="veld-naam">
+            <label
+              class="block text-xs font-bold text-slate-500 uppercase mb-1"
+              for="veld-naam"
+            >
               Naam
             </label>
 
@@ -326,6 +440,78 @@ export interface OntbrekendeDocent {
           </div>
         </div>
       }
+
+      @if (koppelingFormulier(); as k) {
+        <div class="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 class="text-base font-bold text-slate-800 mb-1">
+              Koppel aan bestaande docent
+            </h3>
+
+            <p class="text-xs text-slate-500 mb-4">
+              Kies zelf welke docent bij
+              <strong>{{ k.ontbreekt.naam || 'deze legacykoppeling' }}</strong>
+              hoort. Er wordt niets automatisch gekozen op basis van naam.
+            </p>
+
+            <label
+              for="koppel-afkorting"
+              class="block text-xs font-bold text-slate-500 uppercase mb-1"
+            >
+              Docent
+            </label>
+
+            <select
+              id="koppel-afkorting"
+              [ngModel]="k.docentAfkorting"
+              (ngModelChange)="zetKoppelingAfkorting($event)"
+              class="w-full px-3 py-2 mb-3 text-sm border border-slate-300 rounded bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="">
+                Kies een docent...
+              </option>
+
+              @for (docent of docenten(); track docent.afkorting) {
+                <option [value]="docent.afkorting">
+                  {{ toon(docent.afkorting) }} · {{ docent.naam }}
+                  {{ docent.actief ? '' : ' · niet actief' }}
+                </option>
+              }
+            </select>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-5 text-xs text-slate-600">
+              <div>
+                <strong>Legacynaam:</strong>
+                {{ k.ontbreekt.naam || 'onbekend' }}
+              </div>
+
+              <div class="mt-1">
+                <strong>Aantal koppelingen:</strong>
+                {{ k.ontbreekt.koppelingIds.length }}
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-2">
+              <button
+                type="button"
+                (click)="koppelingFormulier.set(null)"
+                class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-md"
+              >
+                Annuleren
+              </button>
+
+              <button
+                type="button"
+                (click)="bewaarKoppeling()"
+                [disabled]="!kanKoppelen() || bezig()"
+                class="px-4 py-2 text-sm font-medium text-white bg-[#0d1e3a] hover:bg-[#1b3054] rounded-md disabled:opacity-50"
+              >
+                Koppelen
+              </button>
+            </div>
+          </div>
+        </div>
+      }
     </div>
   `,
 })
@@ -343,6 +529,12 @@ export class ManageDocentenComponent {
     naam: string;
     actief: boolean;
     bestaand: boolean;
+    koppelingIds: string[];
+  } | null>(null);
+
+  koppelingFormulier = signal<{
+    ontbreekt: OntbrekendeDocent;
+    docentAfkorting: string;
   } | null>(null);
 
   magVerwijderen = computed(() =>
@@ -390,39 +582,48 @@ export class ManageDocentenComponent {
   });
 
   /**
-   * Docentnamen uit de koppelingen waar nog geen afkorting bij hoort.
+   * Bestaande Docenten/Vakken-records die nog niet expliciet naar een
+   * geldige /docenten-afkorting wijzen.
    *
-   * Bewust geen gok: er wordt uit `Hans Visser` geen `vis` afgeleid. De school
-   * heeft die afkortingen al, en een verkeerde gok is later niet meer te
-   * onderscheiden van een goede.
+   * Een gelijke naam telt niet als koppeling.
    */
   zonderAfkorting = computed<OntbrekendeDocent[]>(() => {
     const bekend = this.dataService.docenten();
     const perDocent = new Map<string, OntbrekendeDocent>();
 
-    for (const [index, koppeling] of this.dataService.docentVakken().entries()) {
+    for (
+      const [index, koppeling]
+      of this.dataService.docentVakken().entries()
+    ) {
       if (
         koppeling.docentAfkorting &&
         bekend.some(d =>
-          zelfdeAfkorting(d.afkorting, koppeling.docentAfkorting),
+          zelfdeAfkorting(
+            d.afkorting,
+            koppeling.docentAfkorting,
+          ),
         )
       ) {
         continue;
       }
 
-      const email = (koppeling.docentEmail ?? '').trim();
-      const naam = (koppeling.docentNaam ?? '').trim();
+      const email =
+        (koppeling.docentEmail ?? '').trim();
 
-      if (!naam && !email) continue;
+      const naam =
+        (koppeling.docentNaam ?? '').trim();
+
+      if (!naam && !email) {
+        continue;
+      }
 
       /*
-       * Een gelijke naam in /docenten is nadrukkelijk GEEN bewijs dat deze
-       * legacykoppeling al goed gekoppeld is. Alleen een expliciete,
-       * bestaande docentAfkorting maakt de koppeling compleet.
+       * Alleen legacy-e-mail wordt gebruikt om bestaande oude records voor
+       * dezelfde beheerhandeling te groeperen. Bij records zonder legacy-e-mail
+       * blijft ieder record apart.
        *
-       * Voor de presentatie groeperen we oude records alleen op hun bestaande
-       * legacy-e-mailadres. Ontbreekt ook dat, dan blijft ieder record apart
-       * zichtbaar; we gaan dan niet alsnog op naam raden of samenvoegen.
+       * Dit bepaalt NIET welke nieuwe docent erbij hoort. Die keuze maakt de
+       * beheerder daarna zelf.
        */
       const sleutel = email
         ? `email:${email.toLowerCase()}`
@@ -432,9 +633,18 @@ export class ManageDocentenComponent {
         naam,
         legacyEmail: email,
         aantalKoppelingen: 0,
+        koppelingIds: [],
       };
 
       bestaand.aantalKoppelingen += 1;
+
+      if (
+        koppeling.id &&
+        !bestaand.koppelingIds.includes(koppeling.id)
+      ) {
+        bestaand.koppelingIds.push(koppeling.id);
+      }
+
       perDocent.set(sleutel, bestaand);
     }
 
@@ -444,13 +654,17 @@ export class ManageDocentenComponent {
   });
 
   genormaliseerd = computed(() =>
-    normaliseerAfkorting(this.formulier()?.afkorting),
+    normaliseerAfkorting(
+      this.formulier()?.afkorting,
+    ),
   );
 
   afkortingFout = computed<AfkortingFout | null>(() => {
     const f = this.formulier();
 
-    if (!f || f.bestaand) return null;
+    if (!f || f.bestaand) {
+      return null;
+    }
 
     return controleerAfkorting(
       f.afkorting,
@@ -461,11 +675,28 @@ export class ManageDocentenComponent {
   kanBewaren = computed(() => {
     const f = this.formulier();
 
-    if (!f) return false;
+    if (!f) {
+      return false;
+    }
 
     return (
       this.afkortingFout() === null &&
       f.naam.trim() !== ''
+    );
+  });
+
+  kanKoppelen = computed(() => {
+    const f = this.koppelingFormulier();
+
+    if (!f || f.ontbreekt.koppelingIds.length === 0) {
+      return false;
+    }
+
+    const afkorting =
+      normaliseerAfkorting(f.docentAfkorting);
+
+    return this.docenten().some(d =>
+      zelfdeAfkorting(d.afkorting, afkorting),
     );
   });
 
@@ -483,7 +714,9 @@ export class ManageDocentenComponent {
   ) {
     const f = this.formulier();
 
-    if (!f) return;
+    if (!f) {
+      return;
+    }
 
     this.formulier.set({
       ...f,
@@ -491,53 +724,162 @@ export class ManageDocentenComponent {
     });
   }
 
+  zetKoppelingAfkorting(waarde: string) {
+    const f = this.koppelingFormulier();
+
+    if (!f) {
+      return;
+    }
+
+    this.koppelingFormulier.set({
+      ...f,
+      docentAfkorting:
+        normaliseerAfkorting(waarde),
+    });
+  }
+
   nieuw() {
+    this.koppelingFormulier.set(null);
+
     this.formulier.set({
       afkorting: '',
       naam: '',
       actief: true,
       bestaand: false,
+      koppelingIds: [],
     });
   }
 
   /**
-   * Nieuw formulier, voorgevuld met de naam uit de koppeling.
+   * De beheerder heeft expliciet gekozen dat deze legacyrecords bij een
+   * nieuw aan te maken docent horen.
    *
-   * De afkorting niet: die valt niet uit een naam af te leiden. Het e-mailadres
-   * evenmin -- dat blijft waar het staat, in de legacygegevens, en komt niet in
-   * het nieuwe docentrecord terecht.
+   * Naam wordt alleen voorgevuld voor gemak. De afkorting blijft leeg en moet
+   * door de beheerder zelf worden ingevuld.
    */
   nieuwVoor(ontbreekt: OntbrekendeDocent) {
+    this.koppelingFormulier.set(null);
+
     this.formulier.set({
       afkorting: '',
       naam: ontbreekt.naam,
       actief: true,
       bestaand: false,
+      koppelingIds: [...ontbreekt.koppelingIds],
+    });
+  }
+
+  /**
+   * Opent een expliciete keuze uit bestaande /docenten-records.
+   */
+  koppelBestaande(ontbreekt: OntbrekendeDocent) {
+    if (ontbreekt.koppelingIds.length === 0) {
+      this.melding.set({
+        soort: 'fout',
+        tekst:
+          'Deze koppeling heeft geen document-ID en kan daarom niet veilig worden bijgewerkt.',
+      });
+      return;
+    }
+
+    this.formulier.set(null);
+
+    this.koppelingFormulier.set({
+      ontbreekt,
+      docentAfkorting: '',
     });
   }
 
   bewerk(docent: Docent) {
+    this.koppelingFormulier.set(null);
+
     this.formulier.set({
       afkorting: docent.afkorting,
       naam: docent.naam,
       actief: docent.actief,
       bestaand: true,
+      koppelingIds: [],
     });
   }
 
-  async bewaar() {
-    const f = this.formulier();
+  private async schrijfDocentAfkortingNaarKoppelingen(
+    koppelingIds: readonly string[],
+    docentAfkorting: string,
+  ) {
+    const afkorting =
+      normaliseerAfkorting(docentAfkorting);
 
-    if (!f || !this.kanBewaren()) return;
+    for (const id of koppelingIds) {
+      await this.dataService.updateDocentVak(
+        id,
+        {
+          docentAfkorting: afkorting,
+        },
+      );
+    }
+  }
+
+  async bewaarKoppeling() {
+    const f = this.koppelingFormulier();
+
+    if (!f || !this.kanKoppelen()) {
+      return;
+    }
+
+    const afkorting =
+      normaliseerAfkorting(f.docentAfkorting);
 
     this.bezig.set(true);
     this.melding.set(null);
 
     try {
-      const afkorting = normaliseerAfkorting(f.afkorting);
+      await this.schrijfDocentAfkortingNaarKoppelingen(
+        f.ontbreekt.koppelingIds,
+        afkorting,
+      );
 
+      const aantal =
+        f.ontbreekt.koppelingIds.length;
+
+      this.melding.set({
+        soort: 'ok',
+        tekst:
+          `${aantal} ${
+            aantal === 1
+              ? 'koppeling is'
+              : 'koppelingen zijn'
+          } gekoppeld aan ${toonAfkorting(afkorting)}.`,
+      });
+
+      this.koppelingFormulier.set(null);
+    } catch (e) {
+      this.melding.set(meldingBijFout(e));
+    } finally {
+      this.bezig.set(false);
+    }
+  }
+
+  async bewaar() {
+    const f = this.formulier();
+
+    if (!f || !this.kanBewaren()) {
+      return;
+    }
+
+    this.bezig.set(true);
+    this.melding.set(null);
+
+    const afkorting =
+      normaliseerAfkorting(f.afkorting);
+
+    let docentOpgeslagen = false;
+
+    try {
       const bestaand = this.docenten().find(d =>
-        zelfdeAfkorting(d.afkorting, afkorting),
+        zelfdeAfkorting(
+          d.afkorting,
+          afkorting,
+        ),
       );
 
       await this.dataService.saveDocent({
@@ -547,13 +889,55 @@ export class ManageDocentenComponent {
         aangemaaktOp: bestaand?.aangemaaktOp,
       });
 
-      this.melding.set(
-        MELDING_BEVESTIGD(`Docent ${toonAfkorting(afkorting)}`),
-      );
+      docentOpgeslagen = true;
+
+      if (f.koppelingIds.length > 0) {
+        await this.schrijfDocentAfkortingNaarKoppelingen(
+          f.koppelingIds,
+          afkorting,
+        );
+
+        const aantal = f.koppelingIds.length;
+
+        this.melding.set({
+          soort: 'ok',
+          tekst:
+            `Docent ${toonAfkorting(afkorting)} is opgeslagen en ` +
+            `${aantal} ${
+              aantal === 1
+                ? 'legacykoppeling is'
+                : 'legacykoppelingen zijn'
+            } gekoppeld.`,
+        });
+      } else {
+        this.melding.set(
+          MELDING_BEVESTIGD(
+            `Docent ${toonAfkorting(afkorting)}`,
+          ),
+        );
+      }
 
       this.formulier.set(null);
     } catch (e) {
-      this.melding.set(meldingBijFout(e));
+      if (
+        docentOpgeslagen &&
+        f.koppelingIds.length > 0
+      ) {
+        const fout = meldingBijFout(e);
+
+        this.formulier.set(null);
+
+        this.melding.set({
+          soort: 'fout',
+          tekst:
+            `Docent ${toonAfkorting(afkorting)} is wel opgeslagen, ` +
+            `maar het koppelen van de legacygegevens is mislukt. ` +
+            `Gebruik daarna "Koppel bestaande" om het opnieuw te proberen.\n` +
+            fout.tekst,
+        });
+      } else {
+        this.melding.set(meldingBijFout(e));
+      }
     } finally {
       this.bezig.set(false);
     }
@@ -571,11 +955,14 @@ export class ManageDocentenComponent {
     this.melding.set(null);
 
     try {
-      await this.dataService.deleteDocent(docent.afkorting);
+      await this.dataService.deleteDocent(
+        docent.afkorting,
+      );
 
       this.melding.set({
         soort: 'ok',
-        tekst: `Docent ${toonAfkorting(docent.afkorting)} is verwijderd.`,
+        tekst:
+          `Docent ${toonAfkorting(docent.afkorting)} is verwijderd.`,
       });
     } catch (e) {
       this.melding.set(meldingBijFout(e));
@@ -583,44 +970,57 @@ export class ManageDocentenComponent {
   }
 
   downloadSjabloon() {
-    downloadCsv('docenten_sjabloon.csv', [
-      ['afkorting', 'naam', 'actief'],
-      ['vis', 'Hans Visser', 'ja'],
-    ]);
+    downloadCsv(
+      'docenten_sjabloon.csv',
+      [
+        ['afkorting', 'naam', 'actief'],
+        ['vis', 'Hans Visser', 'ja'],
+      ],
+    );
   }
 
   downloadLijst() {
-    downloadCsv('docenten.csv', [
-      ['afkorting', 'naam', 'actief'],
-      ...this.docenten().map(d => [
-        d.afkorting,
-        d.naam,
-        d.actief ? 'ja' : 'nee',
-      ]),
-    ]);
+    downloadCsv(
+      'docenten.csv',
+      [
+        ['afkorting', 'naam', 'actief'],
+        ...this.docenten().map(d => [
+          d.afkorting,
+          d.naam,
+          d.actief ? 'ja' : 'nee',
+        ]),
+      ],
+    );
   }
 
   importeer(gebeurtenis: Event) {
-    const invoer = gebeurtenis.target as HTMLInputElement;
-    const bestand = invoer.files?.[0];
+    const invoer =
+      gebeurtenis.target as HTMLInputElement;
 
-    if (!bestand) return;
+    const bestand =
+      invoer.files?.[0];
+
+    if (!bestand) {
+      return;
+    }
 
     const lezer = new FileReader();
 
     lezer.onload = async () => {
       invoer.value = '';
-      await this.verwerkImport(String(lezer.result ?? ''));
+
+      await this.verwerkImport(
+        String(lezer.result ?? ''),
+      );
     };
 
     lezer.readAsText(bestand);
   }
 
   /**
-   * Leest afkorting, naam en actief uit een CSV.
+   * Leest alleen afkorting, naam en actief.
    *
-   * Rijen met een afkorting die niet deugt worden overgeslagen en apart
-   * gemeld, in plaats van de hele import af te breken.
+   * Een eventuele oude e-mailkolom wordt genegeerd.
    */
   async verwerkImport(tekst: string) {
     const rijen = parseCsv(tekst);
@@ -628,23 +1028,33 @@ export class ManageDocentenComponent {
     if (rijen.length < 2) {
       this.melding.set({
         soort: 'fout',
-        tekst: 'Het bestand bevat geen regels onder de kopregel.',
+        tekst:
+          'Het bestand bevat geen regels onder de kopregel.',
       });
       return;
     }
 
-    const koppen = rijen[0].map(k =>
-      k.trim().toLowerCase(),
-    );
+    const koppen =
+      rijen[0].map(k =>
+        k.trim().toLowerCase(),
+      );
 
     const kolom = (naam: string) =>
       koppen.indexOf(naam);
 
-    const kAfkorting = kolom('afkorting');
-    const kNaam = kolom('naam');
-    const kActief = kolom('actief');
+    const kAfkorting =
+      kolom('afkorting');
 
-    if (kAfkorting === -1 || kNaam === -1) {
+    const kNaam =
+      kolom('naam');
+
+    const kActief =
+      kolom('actief');
+
+    if (
+      kAfkorting === -1 ||
+      kNaam === -1
+    ) {
       this.melding.set({
         soort: 'fout',
         tekst:
@@ -658,19 +1068,26 @@ export class ManageDocentenComponent {
 
     for (const rij of rijen.slice(1)) {
       const afkorting =
-        normaliseerAfkorting(rij[kAfkorting]);
+        normaliseerAfkorting(
+          rij[kAfkorting],
+        );
 
       const naam =
         (rij[kNaam] ?? '').trim();
 
-      const fout = controleerAfkorting(
-        afkorting,
-        teSchrijven.map(d => d.afkorting),
-      );
+      const fout =
+        controleerAfkorting(
+          afkorting,
+          teSchrijven.map(
+            d => d.afkorting,
+          ),
+        );
 
       if (fout || naam === '') {
         const omschrijving =
-          afkorting || naam || '(lege regel)';
+          afkorting ||
+          naam ||
+          '(lege regel)';
 
         overgeslagen.push(
           `${omschrijving}: ${
@@ -684,11 +1101,12 @@ export class ManageDocentenComponent {
       }
 
       const actiefTekst =
-        (rij[kActief] ?? '').trim().toLowerCase();
+        (rij[kActief] ?? '')
+          .trim()
+          .toLowerCase();
 
       /*
-       * Een eventuele kolom `email` wordt bewust genegeerd.
-       * E-mail hoort niet in het nieuwe Docent-model.
+       * Een eventuele kolom email wordt bewust niet gelezen.
        */
       teSchrijven.push({
         afkorting,
@@ -696,7 +1114,12 @@ export class ManageDocentenComponent {
         actief:
           actiefTekst === ''
             ? true
-            : ['ja', 'true', '1', 'actief'].includes(actiefTekst),
+            : [
+                'ja',
+                'true',
+                '1',
+                'actief',
+              ].includes(actiefTekst),
       });
     }
 
@@ -712,7 +1135,9 @@ export class ManageDocentenComponent {
 
       const delen = [
         `${gelukt} ${
-          gelukt === 1 ? 'docent' : 'docenten'
+          gelukt === 1
+            ? 'docent'
+            : 'docenten'
         } opgeslagen`,
       ];
 
@@ -725,7 +1150,9 @@ export class ManageDocentenComponent {
 
         if (overgeslagen.length > 10) {
           delen.push(
-            `(en nog ${overgeslagen.length - 10})`,
+            `(en nog ${
+              overgeslagen.length - 10
+            })`,
           );
         }
       }
@@ -738,7 +1165,9 @@ export class ManageDocentenComponent {
         tekst: delen.join('. '),
       });
     } catch (e) {
-      this.melding.set(meldingBijFout(e));
+      this.melding.set(
+        meldingBijFout(e),
+      );
     } finally {
       this.bezig.set(false);
     }

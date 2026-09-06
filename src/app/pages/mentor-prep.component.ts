@@ -8,6 +8,7 @@ import { CommonModule } from '@angular/common';
 import { wachtOpOpslag, Melding, MELDING_BEVESTIGD, MELDING_WACHT, meldingBijFout } from '../utils/opslag';
 import { MemoTW1TW2, MemoTW3 } from '../models/data.models';
 import { bouwDocentIdentiteitVelden } from '../utils/docent-identiteit';
+import { toonAfkorting, normaliseerAfkorting, zelfdeAfkorting } from '../utils/docent-afkorting';
 
 export type DocentMemo = MemoTW1TW2 | MemoTW3;
 
@@ -519,12 +520,13 @@ export type DocentMemo = MemoTW1TW2 | MemoTW3;
                     <input id="create-customVak" type="text" formControlName="customVak" placeholder="Bijv. Wiskunde" class="w-full p-2 text-xs border border-slate-300 rounded outline-none">
                   </div>
                   <div>
-                    <label for="create-customDocentNaam" class="block text-xs font-semibold text-slate-600 mb-1">Naam docent *</label>
-                    <input id="create-customDocentNaam" type="text" formControlName="customDocentNaam" placeholder="Bijv. J. de Vries" class="w-full p-2 text-xs border border-slate-300 rounded outline-none">
-                  </div>
-                  <div class="col-span-2">
-                    <label for="create-customDocentEmail" class="block text-xs font-semibold text-slate-600 mb-1">Docent e-mail</label>
-                    <input id="create-customDocentEmail" type="email" formControlName="customDocentEmail" placeholder="docent@emmauscollege.nl" class="w-full p-2 text-xs border border-slate-300 rounded outline-none">
+                    <label for="create-customDocentAfkorting" class="block text-xs font-semibold text-slate-600 mb-1">Docent (canonieke docent) *</label>
+                    <select id="create-customDocentAfkorting" formControlName="customDocentAfkorting" class="w-full p-2 text-xs border border-slate-300 rounded outline-none">
+                      <option value="">-- Kies een docent --</option>
+                      @for (docent of actieveDocenten(); track docent.afkorting) {
+                        <option [value]="docent.afkorting">{{ toon(docent.afkorting) }} - {{ docent.naam }}</option>
+                      }
+                    </select>
                   </div>
                 </div>
               }
@@ -605,11 +607,20 @@ export class MentorPrepComponent {
   createMemoForm = this.fb.group({
     docentVakId: ['', Validators.required],
     customVak: [''],
-    customDocentNaam: [''],
-    customDocentEmail: [''],
+    customDocentAfkorting: [''],
     waarZieJeDitAan: ['', Validators.required],
     watWerktWel: ['']
   });
+
+  actieveDocenten = computed(() => {
+    return this.dataService.docenten()
+      .filter(d => d.actief)
+      .sort((a, b) => a.afkorting.localeCompare(b.afkorting, 'nl'));
+  });
+
+  toon(afkorting?: string): string {
+    return afkorting ? toonAfkorting(afkorting) : '';
+  }
 
   availableKlassen = computed(() => {
     const lln = this.dataService.leerlingen().filter(l => l.actief && l.schooljaar === '2026-2027');
@@ -806,8 +817,7 @@ export class MentorPrepComponent {
     this.createMemoForm.reset({
       docentVakId: '',
       customVak: '',
-      customDocentNaam: '',
-      customDocentEmail: '',
+      customDocentAfkorting: '',
       waarZieJeDitAan: '',
       watWerktWel: ''
     });
@@ -835,9 +845,19 @@ export class MentorPrepComponent {
 
     if (val.docentVakId === 'custom') {
       vak = (val.customVak || '').trim();
-      docentNaam = (val.customDocentNaam || '').trim();
-      docentEmail = (val.customDocentEmail || '').trim() || 'docent@emmauscollege.nl';
-      if (!vak || !docentNaam) return;
+      const afk = normaliseerAfkorting(val.customDocentAfkorting);
+      if (!vak || !afk) {
+        this.melding.set({ soort: 'fout', tekst: 'Kies een vak en een canonieke docent.' });
+        return;
+      }
+      const docent = this.dataService.docenten().find(d => zelfdeAfkorting(d.afkorting, afk));
+      if (!docent) {
+        this.melding.set({ soort: 'fout', tekst: 'De gekozen docentafkorting is onbekend in het docentenbestand.' });
+        return;
+      }
+      docentAfkorting = normaliseerAfkorting(docent.afkorting);
+      docentNaam = docent.naam;
+      docentEmail = '';
     } else {
       const dv = this.beschikbareDocentVakken().find(d => d.id === val.docentVakId);
       if (!dv) return;

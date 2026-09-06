@@ -76,7 +76,12 @@ describe('Koppelingenbeheer (ManageTeachersComponent)', () => {
   });
 
   it('voegt een nieuwe koppeling toe met genormaliseerde docentafkorting', async () => {
-    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, { rol: 'Coordinator' });
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
+      },
+    });
 
     component.openForm();
     component.form.patchValue({
@@ -101,7 +106,12 @@ describe('Koppelingenbeheer (ManageTeachersComponent)', () => {
   });
 
   it('weigert een afkorting met ongeldige tekens', async () => {
-    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, { rol: 'Coordinator' });
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
+      },
+    });
 
     component.openForm();
     component.form.patchValue({
@@ -120,15 +130,71 @@ describe('Koppelingenbeheer (ManageTeachersComponent)', () => {
     expect(component.showForm()).toBe(true);
   });
 
-  it('kan een koppeling opslaan zonder afkorting voor legacy data', async () => {
-    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, { rol: 'Coordinator' });
+  // --- Fase A4: Voorkom nieuwe legacy DocentVak-records ---
+
+  it('blokkeert opslaan wanneer docentafkorting leeg is (geen lege afkorting voor nieuwe records)', async () => {
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
+      },
+    });
 
     component.openForm();
     component.form.patchValue({
       docentAfkorting: '',
-      docentNaam: 'Oude Docent',
-      docentEmail: 'oud@school.nl',
-      vak: 'Geschiedenis',
+      docentNaam: 'Hans Visser',
+      vak: 'Wiskunde',
+      klas: 'H4A',
+    });
+    await ververs();
+
+    await component.onSubmit();
+    await ververs();
+
+    expect(data.docentVakken()).toHaveLength(0);
+    expect(component.formAfkortingFout()).toContain('verplicht');
+    expect(component.showForm()).toBe(true);
+  });
+
+  it('blokkeert opslaan wanneer docentafkorting niet bestaat in /docenten (onbekende afkorting)', async () => {
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
+      },
+    });
+
+    component.openForm();
+    component.form.patchValue({
+      docentAfkorting: 'onbekend',
+      docentNaam: 'Niemand',
+      vak: 'Wiskunde',
+      klas: 'H4A',
+    });
+    await ververs();
+
+    await component.onSubmit();
+    await ververs();
+
+    expect(data.docentVakken()).toHaveLength(0);
+    expect(component.formAfkortingFout()).toContain('niet bekend in docentenbeheer');
+    expect(component.showForm()).toBe(true);
+  });
+
+  it('verwerkt hoofdletters en kleine letters via normalisatie correct naar de canonieke afkorting', async () => {
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
+      },
+    });
+
+    component.openForm();
+    component.form.patchValue({
+      docentAfkorting: '  ViS  ',
+      docentNaam: 'Hans Visser',
+      vak: 'Wiskunde',
       klas: 'H4A',
     });
     await ververs();
@@ -137,8 +203,150 @@ describe('Koppelingenbeheer (ManageTeachersComponent)', () => {
     await ververs();
 
     expect(data.docentVakken()).toHaveLength(1);
+    expect(data.docentVakken()[0].docentAfkorting).toBe('vis');
+  });
+
+  it('koppelt NOOIT automatisch op basis van alleen een gelijke docentnaam', async () => {
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
+      },
+    });
+
+    component.openForm();
+    // Precies dezelfde naam als in docentenbeheer, maar geen afkorting ingevuld
+    component.form.patchValue({
+      docentAfkorting: '',
+      docentNaam: 'Hans Visser',
+      docentEmail: 'visser@school.nl',
+      vak: 'Wiskunde',
+      klas: 'H4A',
+    });
+    await ververs();
+
+    await component.onSubmit();
+    await ververs();
+
+    expect(data.docentVakken()).toHaveLength(0);
+    expect(component.formAfkortingFout()).not.toBeNull();
+  });
+
+  it('laat een legacyrecord zonder docentAfkorting openen en lezen, maar blokkeert heropslaan zonder canonieke docent', async () => {
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
+        d.docentVakken.set([
+          maakDocentVak({
+            id: 'legacy-1',
+            docentNaam: 'Oude Docent',
+            docentAfkorting: undefined,
+            docentEmail: 'oud@school.nl',
+            vak: 'Geschiedenis',
+            klas: 'H4A',
+          }),
+        ]);
+      },
+    });
+
+    const legacy = data.docentVakken()[0];
+    component.edit(legacy);
+
+    // Record is leesbaar in formulier
+    expect(component.showForm()).toBe(true);
+    expect(component.editingId()).toBe('legacy-1');
+    expect(component.form.value.docentNaam).toBe('Oude Docent');
+    expect(component.form.value.docentEmail).toBe('oud@school.nl');
+    expect(component.form.value.docentAfkorting).toBe('');
+
+    // Probeer opnieuw op te slaan zonder docentAfkorting: MOET blokkeren
+    await component.onSubmit();
+    await ververs();
+
+    expect(component.formAfkortingFout()).not.toBeNull();
     expect(data.docentVakken()[0].docentAfkorting).toBeUndefined();
-    expect(data.docentVakken()[0].docentNaam).toBe('Oude Docent');
+
+    // Pas nu canonieke docent toe en sla op
+    component.kiesBestaandeDocent('vis');
+    await component.onSubmit();
+    await ververs();
+
+    expect(data.docentVakken()[0].docentAfkorting).toBe('vis');
+    expect(data.docentVakken()[0].docentNaam).toBe('Hans Visser');
+  });
+
+  it('bepaalt de opgeslagen docentafkorting en naam vanuit de gekozen canonieke docent', async () => {
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([
+          maakDocent({ afkorting: 'vis', naam: 'Hans Visser' }),
+          maakDocent({ afkorting: 'jan', naam: 'Jan Jansen' }),
+        ]);
+      },
+    });
+
+    component.openForm();
+    component.form.patchValue({
+      vak: 'Natuurkunde',
+      klas: 'H4B',
+    });
+
+    // Kies expliciet Jan Jansen
+    component.kiesBestaandeDocent('JAN');
+    expect(component.form.value.docentAfkorting).toBe('JAN');
+    expect(component.form.value.docentNaam).toBe('Jan Jansen');
+
+    await component.onSubmit();
+    await ververs();
+
+    expect(data.docentVakken()).toHaveLength(1);
+    expect(data.docentVakken()[0].docentAfkorting).toBe('jan');
+    expect(data.docentVakken()[0].docentNaam).toBe('Jan Jansen');
+  });
+
+  it('heeft geen functionele afhankelijkheid van e-mail voor identiteit of opslaan', async () => {
+    const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
+      rol: 'Coordinator',
+      vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
+      },
+    });
+
+    component.openForm();
+    // 1. Zonder email werkt opslaan gewoon met geldige afkorting
+    component.form.patchValue({
+      docentAfkorting: 'vis',
+      docentNaam: 'Hans Visser',
+      docentEmail: '', // Geen email
+      vak: 'Wiskunde',
+      klas: 'H4A',
+    });
+
+    await component.onSubmit();
+    await ververs();
+
+    expect(data.docentVakken()).toHaveLength(1);
+    expect(data.docentVakken()[0].docentAfkorting).toBe('vis');
+    expect(data.docentVakken()[0].docentEmail).toBe('');
+
+    // 2. Met e-mail maar zonder afkorting wordt identiteit NOOIT afgeleid van e-mail
+    component.openForm();
+    component.form.patchValue({
+      docentAfkorting: '',
+      docentNaam: 'Hans Visser',
+      docentEmail: 'visser@school.nl',
+      vak: 'Natuurkunde',
+      klas: 'H4A',
+    });
+
+    await component.onSubmit();
+    await ververs();
+
+    // Tweede record mag NIET opgeslagen worden
+    expect(data.docentVakken()).toHaveLength(1);
+    expect(component.formAfkortingFout()).not.toBeNull();
   });
 
   it('kan een bekende docent kiezen uit docentenbeheer', async () => {
@@ -163,6 +371,7 @@ describe('Koppelingenbeheer (ManageTeachersComponent)', () => {
     const { component, data, ververs } = await maakOmgeving(ManageTeachersComponent, {
       rol: 'Coordinator',
       vul: d => {
+        d.docenten.set([maakDocent({ afkorting: 'vis', naam: 'Hans Visser' })]);
         d.docentVakken.set([
           maakDocentVak({ id: 'dv1', docentNaam: 'Hans Visser', docentEmail: 'visser@school.nl', vak: 'Wiskunde', klas: 'H4A' }),
         ]);

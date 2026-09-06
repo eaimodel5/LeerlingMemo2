@@ -6,6 +6,9 @@ import {
   DOCENT2,
   maakDocent,
   maakDocentVak,
+  maakTaak,
+  maakMemoTW12,
+  maakMemoTW3,
 } from '../../testing/factories';
 
 let dialogen = nepDialogen();
@@ -368,7 +371,7 @@ describe('Docenten: wie mist er nog een afkorting', () => {
 });
 
 describe('Docenten: migratie-readiness', () => {
-  it('is gereed als alle koppelingen een bekende docentafkorting hebben', async () => {
+  it('is pas gereed als alle 4 collecties een bekende docentafkorting hebben', async () => {
     const { component } = await maakOmgeving(
       ManageDocentenComponent,
       {
@@ -387,6 +390,24 @@ describe('Docenten: migratie-readiness', () => {
               docentAfkorting: 'VIS',
             }),
           ]);
+          d.docentTaken.set([
+            maakTaak({
+              id: 'taak-1',
+              docentAfkorting: 'vis',
+            }),
+          ]);
+          d.memoTW1TW2.set([
+            maakMemoTW12({
+              id: 'memo1-1',
+              docentAfkorting: 'VIS',
+            }),
+          ]);
+          d.memoTW3.set([
+            maakMemoTW3({
+              id: 'memo3-1',
+              docentAfkorting: 'vis',
+            }),
+          ]);
         },
       },
     );
@@ -394,8 +415,8 @@ describe('Docenten: migratie-readiness', () => {
     const status = component.migratieStatus();
 
     expect(status.gereed).toBe(true);
-    expect(status.totaalRecords).toBe(1);
-    expect(status.metAfkorting).toBe(1);
+    expect(status.totaalRecords).toBe(4);
+    expect(status.metAfkorting).toBe(4);
     expect(status.zonderAfkorting).toBe(0);
     expect(status.onbekendeAfkorting).toBe(0);
     expect(status.dubbeleAfkortingen).toEqual([]);
@@ -410,7 +431,6 @@ describe('Docenten: migratie-readiness', () => {
           d.docenten.set([
             maakDocent({
               afkorting: 'vis',
-              naam: 'Hans Visser',
             }),
           ]);
 
@@ -427,9 +447,6 @@ describe('Docenten: migratie-readiness', () => {
     const status = component.migratieStatus();
 
     expect(status.gereed).toBe(false);
-    expect(status.zonderAfkorting).toBe(1);
-    expect(status.onbekendeAfkorting).toBe(0);
-
     expect(status.problemen).toContainEqual({
       collectie: 'Docenten/Vakken',
       recordId: 'koppeling-1',
@@ -437,25 +454,14 @@ describe('Docenten: migratie-readiness', () => {
     });
   });
 
-  it('is niet gereed als een koppeling naar een onbekende afkorting verwijst', async () => {
+  it('is niet gereed als een taak nog geen docentafkorting heeft', async () => {
     const { component } = await maakOmgeving(
       ManageDocentenComponent,
       {
         rol: 'Mentor',
         vul: d => {
-          d.docenten.set([
-            maakDocent({
-              afkorting: 'vis',
-              naam: 'Hans Visser',
-            }),
-          ]);
-
-          d.docentVakken.set([
-            maakDocentVak({
-              id: 'koppeling-1',
-              docentAfkorting: 'xyz',
-            }),
-          ]);
+          d.docenten.set([maakDocent({ afkorting: 'vis' })]);
+          d.docentTaken.set([maakTaak({ id: 'taak-1', docentAfkorting: undefined })]);
         },
       },
     );
@@ -463,14 +469,56 @@ describe('Docenten: migratie-readiness', () => {
     const status = component.migratieStatus();
 
     expect(status.gereed).toBe(false);
-    expect(status.zonderAfkorting).toBe(0);
-    expect(status.onbekendeAfkorting).toBe(1);
-
     expect(status.problemen).toContainEqual({
-      collectie: 'Docenten/Vakken',
-      recordId: 'koppeling-1',
+      collectie: 'DocentTaken',
+      recordId: 'taak-1',
+      soort: 'ontbreekt',
+    });
+  });
+
+  it('is niet gereed als een memo TW1/TW2 naar een onbekende afkorting verwijst', async () => {
+    const { component } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([maakDocent({ afkorting: 'vis' })]);
+          d.memoTW1TW2.set([maakMemoTW12({ id: 'memo1-1', docentAfkorting: 'onbekend' })]);
+        },
+      },
+    );
+
+    const status = component.migratieStatus();
+
+    expect(status.gereed).toBe(false);
+    expect(status.problemen).toContainEqual({
+      collectie: 'Memo TW1/TW2',
+      recordId: 'memo1-1',
       soort: 'onbekend',
-      docentAfkorting: 'xyz',
+      docentAfkorting: 'onbekend',
+    });
+  });
+
+  it('is niet gereed als een memo TW3 naar een onbekende afkorting verwijst', async () => {
+    const { component } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([maakDocent({ afkorting: 'vis' })]);
+          d.memoTW3.set([maakMemoTW3({ id: 'memo3-1', docentAfkorting: 'onbekend' })]);
+        },
+      },
+    );
+
+    const status = component.migratieStatus();
+
+    expect(status.gereed).toBe(false);
+    expect(status.problemen).toContainEqual({
+      collectie: 'Memo TW3',
+      recordId: 'memo3-1',
+      soort: 'onbekend',
+      docentAfkorting: 'onbekend',
     });
   });
 
@@ -504,7 +552,7 @@ describe('Docenten: migratie-readiness', () => {
 });
 
 describe('Docenten: expliciete backfill', () => {
-  it('koppelt legacygegevens aan een bestaande docent na expliciete keuze', async () => {
+  it('backfillt een DocentVak expliciet na beheerkeuze', async () => {
     const { component, data, ververs } = await maakOmgeving(
       ManageDocentenComponent,
       {
@@ -529,6 +577,10 @@ describe('Docenten: expliciete backfill', () => {
 
     const ontbreekt =
       component.zonderAfkorting()[0];
+
+    expect(ontbreekt.doelen).toEqual([
+      { collectie: 'docentVakken', id: 'koppeling-1' },
+    ]);
 
     component.koppelBestaande(ontbreekt);
 
@@ -551,15 +603,23 @@ describe('Docenten: expliciete backfill', () => {
     ).toBeNull();
   });
 
-  it('maakt een nieuwe docent en koppelt daarna de legacygegevens', async () => {
+  it('backfillt een DocentTaak expliciet na beheerkeuze', async () => {
     const { component, data, ververs } = await maakOmgeving(
       ManageDocentenComponent,
       {
         rol: 'Mentor',
         vul: d => {
-          d.docentVakken.set([
-            maakDocentVak({
-              id: 'koppeling-1',
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+            }),
+          ]);
+
+          d.docentTaken.set([
+            maakTaak({
+              id: 'taak-1',
+              docentNaam: 'Hans Visser',
               docentAfkorting: undefined,
             }),
           ]);
@@ -570,23 +630,172 @@ describe('Docenten: expliciete backfill', () => {
     const ontbreekt =
       component.zonderAfkorting()[0];
 
-    component.nieuwVoor(ontbreekt);
-    component.zetVeld('afkorting', 'VIS');
+    expect(ontbreekt.doelen).toEqual([
+      { collectie: 'docentTaken', id: 'taak-1' },
+    ]);
 
+    component.koppelBestaande(ontbreekt);
+    component.zetKoppelingAfkorting('VIS');
     await ververs();
 
-    await component.bewaar();
+    await component.bewaarKoppeling();
     await ververs();
 
-    expect(data.docenten()).toHaveLength(1);
+    expect(
+      data.docentTaken()[0].docentAfkorting,
+    ).toBe('vis');
+  });
+
+  it('backfillt een Memo TW1/TW2 expliciet na beheerkeuze', async () => {
+    const { component, data, ververs } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+            }),
+          ]);
+
+          d.memoTW1TW2.set([
+            maakMemoTW12({
+              id: 'memo1-1',
+              docentNaam: 'Hans Visser',
+              docentAfkorting: undefined,
+            }),
+          ]);
+        },
+      },
+    );
+
+    const ontbreekt =
+      component.zonderAfkorting()[0];
+
+    expect(ontbreekt.doelen).toEqual([
+      { collectie: 'memoTW1TW2', id: 'memo1-1' },
+    ]);
+
+    component.koppelBestaande(ontbreekt);
+    component.zetKoppelingAfkorting('VIS');
+    await ververs();
+
+    await component.bewaarKoppeling();
+    await ververs();
 
     expect(
-      data.docenten()[0].afkorting,
+      data.memoTW1TW2()[0].docentAfkorting,
     ).toBe('vis');
+  });
+
+  it('backfillt een Memo TW3 expliciet na beheerkeuze', async () => {
+    const { component, data, ververs } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+            }),
+          ]);
+
+          d.memoTW3.set([
+            maakMemoTW3({
+              id: 'memo3-1',
+              docentNaam: 'Hans Visser',
+              docentAfkorting: undefined,
+            }),
+          ]);
+        },
+      },
+    );
+
+    const ontbreekt =
+      component.zonderAfkorting()[0];
+
+    expect(ontbreekt.doelen).toEqual([
+      { collectie: 'memoTW3', id: 'memo3-1' },
+    ]);
+
+    component.koppelBestaande(ontbreekt);
+    component.zetKoppelingAfkorting('VIS');
+    await ververs();
+
+    await component.bewaarKoppeling();
+    await ververs();
 
     expect(
-      data.docentVakken()[0].docentAfkorting,
+      data.memoTW3()[0].docentAfkorting,
     ).toBe('vis');
+  });
+
+  it('werkt voor één legacy-identiteit alle exacte doelen over meerdere collecties bij', async () => {
+    const { component, data, ververs } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+            }),
+          ]);
+
+          d.docentVakken.set([
+            maakDocentVak({
+              id: 'vak-1',
+              docentEmail: 'visser@school.nl',
+              docentAfkorting: undefined,
+            }),
+          ]);
+          d.docentTaken.set([
+            maakTaak({
+              id: 'taak-1',
+              docentEmail: 'visser@school.nl',
+              docentAfkorting: undefined,
+            }),
+          ]);
+          d.memoTW1TW2.set([
+            maakMemoTW12({
+              id: 'memo1-1',
+              docentEmail: 'visser@school.nl',
+              docentAfkorting: undefined,
+            }),
+          ]);
+          d.memoTW3.set([
+            maakMemoTW3({
+              id: 'memo3-1',
+              docentEmail: 'visser@school.nl',
+              docentAfkorting: undefined,
+            }),
+          ]);
+        },
+      },
+    );
+
+    const ontbrekend = component.zonderAfkorting();
+    expect(ontbrekend).toHaveLength(1);
+    expect(ontbrekend[0].doelen).toEqual([
+      { collectie: 'docentVakken', id: 'vak-1' },
+      { collectie: 'docentTaken', id: 'taak-1' },
+      { collectie: 'memoTW1TW2', id: 'memo1-1' },
+      { collectie: 'memoTW3', id: 'memo3-1' },
+    ]);
+
+    component.koppelBestaande(ontbrekend[0]);
+    component.zetKoppelingAfkorting('vis');
+
+    await component.bewaarKoppeling();
+    await ververs();
+
+    expect(data.docentVakken()[0].docentAfkorting).toBe('vis');
+    expect(data.docentTaken()[0].docentAfkorting).toBe('vis');
+    expect(data.memoTW1TW2()[0].docentAfkorting).toBe('vis');
+    expect(data.memoTW3()[0].docentAfkorting).toBe('vis');
   });
 
   it('koppelt nooit automatisch op alleen een gelijke naam', async () => {
@@ -609,24 +818,124 @@ describe('Docenten: expliciete backfill', () => {
               docentAfkorting: undefined,
             }),
           ]);
+          d.docentTaken.set([
+            maakTaak({
+              id: 'taak-1',
+              docentNaam: DOCENT.naam,
+              docentAfkorting: undefined,
+            }),
+          ]);
+          d.memoTW1TW2.set([
+            maakMemoTW12({
+              id: 'memo1-1',
+              docentNaam: DOCENT.naam,
+              docentAfkorting: undefined,
+            }),
+          ]);
+          d.memoTW3.set([
+            maakMemoTW3({
+              id: 'memo3-1',
+              docentNaam: DOCENT.naam,
+              docentAfkorting: undefined,
+            }),
+          ]);
         },
       },
     );
 
-    expect(
-      data.docentVakken()[0].docentAfkorting,
-    ).toBeUndefined();
-
-    expect(
-      component.zonderAfkorting(),
-    ).toHaveLength(1);
-
-    expect(
-      component.migratieStatus().gereed,
-    ).toBe(false);
+    expect(data.docentVakken()[0].docentAfkorting).toBeUndefined();
+    expect(data.docentTaken()[0].docentAfkorting).toBeUndefined();
+    expect(data.memoTW1TW2()[0].docentAfkorting).toBeUndefined();
+    expect(data.memoTW3()[0].docentAfkorting).toBeUndefined();
+    expect(component.zonderAfkorting().length).toBeGreaterThan(0);
+    expect(component.migratieStatus().gereed).toBe(false);
   });
 
-  it('werkt meerdere legacykoppelingen van dezelfde oude identiteit tegelijk bij', async () => {
+  it('overschrijft een bestaand Docent-record niet wanneer hieraan gekoppeld wordt', async () => {
+    const { component, data, ververs } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({
+              afkorting: 'vis',
+              naam: 'Hans Visser',
+              aangemaaktOp: '2026-01-01T10:00:00Z',
+              actief: true,
+            }),
+          ]);
+
+          d.docentTaken.set([
+            maakTaak({
+              id: 'taak-1',
+              docentNaam: 'Oude Niet-Canonieke Naam',
+              docentEmail: 'oud@school.nl',
+              docentAfkorting: undefined,
+            }),
+          ]);
+        },
+      },
+    );
+
+    const ontbreekt = component.zonderAfkorting()[0];
+    component.koppelBestaande(ontbreekt);
+    component.zetKoppelingAfkorting('VIS');
+    await component.bewaarKoppeling();
+    await ververs();
+
+    expect(data.docenten()).toHaveLength(1);
+    expect(data.docenten()[0].afkorting).toBe('vis');
+    expect(data.docenten()[0].naam).toBe('Hans Visser');
+    expect(data.docenten()[0].aangemaaktOp).toBe('2026-01-01T10:00:00Z');
+    expect(data.docenten()[0].actief).toBe(true);
+    expect(data.docentTaken()[0].docentAfkorting).toBe('vis');
+  });
+
+  it('slaat een bewust nieuw aangemaakte docent eerst op en gebruikt deze daarna voor de backfill', async () => {
+    const { component, data, ververs } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docentVakken.set([
+            maakDocentVak({
+              id: 'koppeling-1',
+              docentNaam: 'Nieuwe Collega',
+              docentAfkorting: undefined,
+            }),
+          ]);
+          d.docentTaken.set([
+            maakTaak({
+              id: 'taak-1',
+              docentNaam: 'Nieuwe Collega',
+              docentAfkorting: undefined,
+            }),
+          ]);
+        },
+      },
+    );
+
+    expect(data.docenten()).toHaveLength(0);
+
+    const ontbreekt = component.zonderAfkorting()[0];
+    component.nieuwVoor(ontbreekt);
+    component.zetVeld('afkorting', 'NC');
+    component.zetVeld('naam', 'Nieuwe Collega');
+    await ververs();
+
+    await component.bewaar();
+    await ververs();
+
+    expect(data.docenten()).toHaveLength(1);
+    expect(data.docenten()[0].afkorting).toBe('nc');
+    expect(data.docenten()[0].naam).toBe('Nieuwe Collega');
+
+    expect(data.docentVakken()[0].docentAfkorting).toBe('nc');
+    expect(data.docentTaken()[0].docentAfkorting).toBe('nc');
+  });
+
+  it('verwijdert of herschrijft legacy-e-mail en legacynaam niet tijdens de backfill', async () => {
     const { component, data, ververs } = await maakOmgeving(
       ManageDocentenComponent,
       {
@@ -639,15 +948,19 @@ describe('Docenten: expliciete backfill', () => {
             }),
           ]);
 
-          d.docentVakken.set([
-            maakDocentVak({
-              id: 'koppeling-1',
-              vak: 'Wiskunde',
+          d.docentTaken.set([
+            maakTaak({
+              id: 'taak-1',
+              docentNaam: 'Oude Naam Onveranderd',
+              docentEmail: 'oude.email@school.nl',
               docentAfkorting: undefined,
             }),
-            maakDocentVak({
-              id: 'koppeling-2',
-              vak: 'Natuurkunde',
+          ]);
+          d.memoTW1TW2.set([
+            maakMemoTW12({
+              id: 'memo1-1',
+              docentNaam: 'Oude Naam Onveranderd',
+              docentEmail: 'oude.email@school.nl',
               docentAfkorting: undefined,
             }),
           ]);
@@ -655,79 +968,100 @@ describe('Docenten: expliciete backfill', () => {
       },
     );
 
-    const ontbreekt =
-      component.zonderAfkorting()[0];
-
-    expect(
-      ontbreekt.koppelingIds.sort(),
-    ).toEqual([
-      'koppeling-1',
-      'koppeling-2',
-    ]);
-
+    const ontbreekt = component.zonderAfkorting()[0];
     component.koppelBestaande(ontbreekt);
     component.zetKoppelingAfkorting('vis');
-
     await component.bewaarKoppeling();
     await ververs();
 
-    expect(
-      data.docentVakken().map(
-        koppeling => koppeling.docentAfkorting,
-      ),
-    ).toEqual([
-      'vis',
-      'vis',
-    ]);
+    const taak = data.docentTaken()[0];
+    expect(taak.docentAfkorting).toBe('vis');
+    expect(taak.docentNaam).toBe('Oude Naam Onveranderd');
+    expect(taak.docentEmail).toBe('oude.email@school.nl');
+
+    const memo = data.memoTW1TW2()[0];
+    expect(memo.docentAfkorting).toBe('vis');
+    expect(memo.docentNaam).toBe('Oude Naam Onveranderd');
+    expect(memo.docentEmail).toBe('oude.email@school.nl');
   });
 
-  it('wordt gereed nadat de laatste ontbrekende koppeling is aangevuld', async () => {
+  it('wordt pas gereed nadat het laatste probleem over alle vier datasets is opgelost', async () => {
     const { component, data, ververs } = await maakOmgeving(
       ManageDocentenComponent,
       {
         rol: 'Mentor',
         vul: d => {
           d.docenten.set([
-            maakDocent({
-              afkorting: 'vis',
-              naam: 'Hans Visser',
-            }),
+            maakDocent({ afkorting: 'vis', naam: 'Hans Visser' }),
+            maakDocent({ afkorting: 'jns', naam: 'Jansen' }),
           ]);
-
           d.docentVakken.set([
-            maakDocentVak({
-              id: 'koppeling-1',
-              docentAfkorting: undefined,
-            }),
+            maakDocentVak({ id: 'vak-1', docentAfkorting: 'vis' }),
+          ]);
+          d.docentTaken.set([
+            maakTaak({ id: 'taak-1', docentAfkorting: 'vis' }),
+          ]);
+          d.memoTW1TW2.set([
+            maakMemoTW12({ id: 'memo1-1', docentAfkorting: 'vis' }),
+          ]);
+          d.memoTW3.set([
+            maakMemoTW3({ id: 'memo3-1', docentAfkorting: undefined, docentNaam: 'Jansen' }),
           ]);
         },
       },
     );
 
-    expect(
-      component.migratieStatus().gereed,
-    ).toBe(false);
+    expect(component.migratieStatus().gereed).toBe(false);
+    expect(component.zonderAfkorting()).toHaveLength(1);
 
-    const ontbreekt =
-      component.zonderAfkorting()[0];
-
+    const ontbreekt = component.zonderAfkorting()[0];
     component.koppelBestaande(ontbreekt);
-    component.zetKoppelingAfkorting('vis');
-
+    component.zetKoppelingAfkorting('jns');
     await component.bewaarKoppeling();
     await ververs();
 
-    expect(
-      data.docentVakken()[0].docentAfkorting,
-    ).toBe('vis');
+    expect(data.memoTW3()[0].docentAfkorting).toBe('jns');
+    expect(component.zonderAfkorting()).toHaveLength(0);
+    expect(component.migratieStatus().gereed).toBe(true);
+  });
 
-    expect(
-      component.migratieStatus().gereed,
-    ).toBe(true);
+  it('meldt een duidelijke fout zonder rollback als een deel van de records niet kan worden bijgewerkt', async () => {
+    const { component, data, ververs } = await maakOmgeving(
+      ManageDocentenComponent,
+      {
+        rol: 'Mentor',
+        vul: d => {
+          d.docenten.set([
+            maakDocent({ afkorting: 'vis', naam: 'Hans Visser' }),
+          ]);
+          d.docentVakken.set([
+            maakDocentVak({ id: 'vak-1', docentEmail: 'visser@school.nl', docentAfkorting: undefined }),
+          ]);
+          d.docentTaken.set([
+            maakTaak({ id: 'taak-1', docentEmail: 'visser@school.nl', docentAfkorting: undefined }),
+          ]);
+        },
+      },
+    );
 
-    expect(
-      component.zonderAfkorting(),
-    ).toHaveLength(0);
+    // Make updateDocentTaak fail
+    data.updateDocentTaak = async () => {
+      throw new Error('Firestore netwerkfout');
+    };
+
+    const ontbreekt = component.zonderAfkorting()[0];
+    component.koppelBestaande(ontbreekt);
+    component.zetKoppelingAfkorting('vis');
+    await component.bewaarKoppeling();
+    await ververs();
+
+    // First one was updated, second failed (no rollback simulation)
+    expect(data.docentVakken()[0].docentAfkorting).toBe('vis');
+    expect(data.docentTaken()[0].docentAfkorting).toBeUndefined();
+
+    expect(component.melding()?.soort).toBe('fout');
+    expect(component.melding()?.tekst).toContain('Niet alle records konden worden bijgewerkt');
+    expect(component.melding()?.tekst).toContain('Een deel is mogelijk al gekoppeld');
   });
 });
 

@@ -503,6 +503,18 @@ export class DataService {
   }
 
   /**
+   * Interne seam voor unit tests om echte Firestore-calls te omzeilen
+   * (aangezien in Angular 21 de module mock voor relatieve imports instabiel is).
+   */
+  _firestoreSetDoc = setDoc;
+
+  async updateDocentTaak(id: string, updates: Partial<DocentTaak>) {
+    try {
+      await this._firestoreSetDoc(doc(db, 'docentTaken', id), updates, { merge: true });
+    } catch (e) { handleFirestoreError(e, OperationType.WRITE, 'docentTaken'); }
+  }
+
+  /**
    * Zet taken uit voor meerdere leerlingen tegelijk.
    *
    * Taken die al bestaan worden overgeslagen in plaats van overschreven: de

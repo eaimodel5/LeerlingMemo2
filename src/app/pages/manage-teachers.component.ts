@@ -170,22 +170,26 @@ import { losDocentIdentiteitOp, komtDocentOvereen } from '../utils/docent-identi
             <form [formGroup]="form" (ngSubmit)="onSubmit()" class="flex-1 p-6 flex flex-col gap-4">
               <input type="hidden" formControlName="schooljaar">
 
-              @if (actieveDocenten().length > 0) {
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1" for="select-bekende-docent">Kies uit Docentenbeheer</label>
-                  <select id="select-bekende-docent" (change)="kiesBestaandeDocent($any($event.target).value)" class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                    <option value="">-- Kies docent (vult afkorting en naam in) --</option>
-                    @for (d of actieveDocenten(); track d.afkorting) {
-                      <option [value]="d.afkorting">{{ toonDocentOptie(d) }}</option>
-                    }
-                  </select>
-                </div>
-              }
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1" for="select-bekende-docent">Docent uit Docentenbeheer *</label>
+                <select id="select-bekende-docent"
+                        [value]="gekozenDocentAfkorting()"
+                        (change)="kiesBestaandeDocent($any($event.target).value)"
+                        class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                  <option value="">-- Kies docent (AFKORTING - Naam) --</option>
+                  @for (d of canoniekeDocenten(); track d.afkorting) {
+                    <option [value]="d.afkorting">{{ toonDocentOptie(d) }}</option>
+                  }
+                </select>
+                @if (canoniekeDocenten().length === 0) {
+                  <p class="text-[11px] text-amber-600 mt-1">Er zijn nog geen docenten in docentenbeheer. Voeg eerst een docent toe in Docentenbeheer.</p>
+                }
+              </div>
 
               <div class="grid grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1" for="veld-afkorting">Afkorting</label>
-                  <input id="veld-afkorting" type="text" formControlName="docentAfkorting" placeholder="bijv. VIS" class="w-full p-2 text-sm font-mono uppercase border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                  <label class="block text-xs font-semibold text-slate-600 mb-1" for="veld-afkorting">Afkorting *</label>
+                  <input id="veld-afkorting" type="text" formControlName="docentAfkorting" (blur)="onAfkortingBlur()" placeholder="bijv. VIS" class="w-full p-2 text-sm font-mono uppercase border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
                   @if (formAfkortingFout(); as fout) {
                     <p class="text-[11px] text-red-600 mt-1">{{ fout }}</p>
                   }
@@ -202,7 +206,7 @@ import { losDocentIdentiteitOp, komtDocentOvereen } from '../utils/docent-identi
               <div>
                 <label class="block text-xs font-semibold text-slate-600 mb-1" for="veld-docent-email">Docent Email (optioneel)</label>
                 <input id="veld-docent-email" type="email" formControlName="docentEmail" placeholder="visser@school.nl" class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
-                <p class="text-[11px] text-slate-400 mt-1">Docentafkorting is de primaire sleutel; e-mailadres dient als fallback voor legacy koppelingen.</p>
+                <p class="text-[11px] text-slate-400 mt-1">Docentafkorting is verplicht en gekoppeld aan docentenbeheer. E-mailadres is een optioneel legacy-veld.</p>
               </div>
 
               <div class="grid grid-cols-2 gap-4">
@@ -258,7 +262,7 @@ export class ManageTeachersComponent {
   melding = signal<{ soort: 'ok' | 'fout' | 'info'; tekst: string } | null>(null);
 
   form = this.fb.group({
-    docentAfkorting: [''],
+    docentAfkorting: ['', Validators.required],
     docentNaam: ['', Validators.required],
     docentEmail: [''],
     vak: ['', Validators.required],
@@ -266,6 +270,11 @@ export class ManageTeachersComponent {
     schooljaar: ['2026-2027'],
     actief: [true]
   });
+
+  canoniekeDocenten = computed(() =>
+    [...this.dataService.docenten()]
+      .sort((a, b) => a.afkorting.localeCompare(b.afkorting, 'nl'))
+  );
 
   actieveDocenten = computed(() =>
     [...this.dataService.docenten()]
@@ -311,11 +320,42 @@ export class ManageTeachersComponent {
   }
 
   toonDocentOptie(d: Docent): string {
-    return `${toonAfkorting(d.afkorting)} - ${d.naam}`;
+    const basis = `${toonAfkorting(d.afkorting)} - ${d.naam}`;
+    return d.actief === false ? `${basis} (inactief)` : basis;
+  }
+
+  gekozenDocentAfkorting(): string {
+    const raw = this.form.controls.docentAfkorting.value;
+    if (!raw) return '';
+    const norm = normaliseerAfkorting(raw);
+    const docent = this.dataService.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+    return docent ? docent.afkorting : '';
+  }
+
+  onAfkortingBlur() {
+    const raw = (this.form.controls.docentAfkorting.value ?? '').trim();
+    if (!raw) return;
+    const norm = normaliseerAfkorting(raw);
+    if (afkortingIsGeldig(norm)) {
+      const docent = this.dataService.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+      if (docent) {
+        this.form.patchValue({
+          docentAfkorting: toonAfkorting(docent.afkorting),
+          docentNaam: docent.naam
+        });
+        this.formAfkortingFout.set(null);
+      }
+    }
   }
 
   kiesBestaandeDocent(afkorting: string) {
-    if (!afkorting) return;
+    if (!afkorting) {
+      this.form.patchValue({
+        docentAfkorting: '',
+        docentNaam: ''
+      });
+      return;
+    }
     const docent = this.dataService.docenten().find(d => zelfdeAfkorting(d.afkorting, afkorting));
     if (docent) {
       this.form.patchValue({
@@ -520,30 +560,47 @@ export class ManageTeachersComponent {
   }
 
   async onSubmit() {
+    const val = this.form.value;
+    const rawAfk = (val.docentAfkorting ?? '').trim();
+
+    // 1. Controleer dat docentAfkorting gevuld is
+    if (!rawAfk) {
+      this.formAfkortingFout.set('Docentafkorting is verplicht. Kies een docent uit docentenbeheer.');
+      return;
+    }
+
+    // 3. Normaliseer volgens de bestaande helper en controleer syntaxis
+    const norm = normaliseerAfkorting(rawAfk);
+    if (!afkortingIsGeldig(norm)) {
+      this.formAfkortingFout.set('Een afkorting bestaat uit 2 tot 8 letters of cijfers (zonder spaties of leestekens).');
+      return;
+    }
+
+    // 2. Controleer dat deze afkorting bestaat in /docenten
+    const canoniekeDocent = this.dataService.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+    if (!canoniekeDocent) {
+      this.formAfkortingFout.set(`Docentafkorting '${toonAfkorting(norm)}' is niet bekend in docentenbeheer. Kies een bestaande docent.`);
+      return;
+    }
+
+    this.formAfkortingFout.set(null);
+
+    // Snapshot naam uit de gekozen canonieke docent
+    const docentNaam = canoniekeDocent.naam || (val.docentNaam ?? '').trim();
+    if (!this.form.value.docentNaam) {
+      this.form.patchValue({ docentNaam });
+    }
+
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
     }
 
-    const val = this.form.value;
-    const rawAfk = (val.docentAfkorting ?? '').trim();
-    let cleanAfk: string | undefined;
-
-    if (rawAfk) {
-      const norm = normaliseerAfkorting(rawAfk);
-      if (!afkortingIsGeldig(norm)) {
-        this.formAfkortingFout.set('Een afkorting bestaat uit 2 tot 8 letters of cijfers (zonder spaties of leestekens).');
-        return;
-      }
-      cleanAfk = norm;
-    }
-
-    this.formAfkortingFout.set(null);
-
+    // 4. Schrijf de gekozen canonieke docentAfkorting
     const docentVakData: Omit<DocentVak, 'id'> = {
-      docentNaam: (val.docentNaam ?? '').trim(),
+      docentNaam,
       docentEmail: (val.docentEmail ?? '').trim(),
-      ...(cleanAfk ? { docentAfkorting: cleanAfk } : {}),
+      docentAfkorting: norm,
       vak: (val.vak ?? '').trim(),
       klas: (val.klas ?? '').trim(),
       schooljaar: val.schooljaar ?? '2026-2027',

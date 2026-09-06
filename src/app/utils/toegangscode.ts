@@ -152,3 +152,83 @@ export function sessieMoetStoppen(
   if (!bestaat) return true;
   return !isActieveCode(data);
 }
+
+export interface AccessCodeMigratieProbleem {
+  codeId: string;
+  code: string;
+  ownerName: string;
+  ownerEmail: string;
+  role: UserRole;
+  soort: 'ontbreekt' | 'onbekend';
+  docentAfkorting?: string;
+}
+
+export interface AccessCodeMigratieStatus {
+  totaal: number;
+  metAfkorting: number;
+  zonderAfkorting: number;
+  onbekendeAfkorting: number;
+  problemen: number;
+  probleemGevallen: AccessCodeMigratieProbleem[];
+}
+
+/**
+ * Analyseert toegangscodes op de aanwezigheid en geldigheid van hun docentafkorting.
+ *
+ * Elke rol (Docent, Mentor, Coordinator, Superuser) behoort aan een personeelslid
+ * (canonieke docent) gekoppeld te zijn. Codes zonder docentAfkorting of met een afkorting
+ * die niet voorkomt in het docentenbestand zijn migratieproblemen.
+ */
+export function analyseerAccessCodeMigratie(
+  codes: readonly AccessCode[],
+  docenten: readonly { afkorting: string }[],
+): AccessCodeMigratieStatus {
+  const bekendeAfkortingen = new Set(
+    docenten.map(d => d.afkorting.trim().toLowerCase()).filter(Boolean),
+  );
+
+  let metAfkorting = 0;
+  let zonderAfkorting = 0;
+  let onbekendeAfkorting = 0;
+  const probleemGevallen: AccessCodeMigratieProbleem[] = [];
+
+  for (const c of codes) {
+    const afk = c.docentAfkorting?.trim().toLowerCase();
+    const codeId = c.id ?? c.code;
+
+    if (!afk) {
+      zonderAfkorting++;
+      probleemGevallen.push({
+        codeId,
+        code: c.code,
+        ownerName: c.ownerName,
+        ownerEmail: c.ownerEmail,
+        role: c.role,
+        soort: 'ontbreekt',
+      });
+    } else if (!bekendeAfkortingen.has(afk)) {
+      onbekendeAfkorting++;
+      probleemGevallen.push({
+        codeId,
+        code: c.code,
+        ownerName: c.ownerName,
+        ownerEmail: c.ownerEmail,
+        role: c.role,
+        soort: 'onbekend',
+        docentAfkorting: afk,
+      });
+    } else {
+      metAfkorting++;
+    }
+  }
+
+  return {
+    totaal: codes.length,
+    metAfkorting,
+    zonderAfkorting,
+    onbekendeAfkorting,
+    problemen: zonderAfkorting + onbekendeAfkorting,
+    probleemGevallen,
+  };
+}
+

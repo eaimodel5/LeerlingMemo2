@@ -309,3 +309,255 @@ describe('Docent: alleen de eigen koppelingen', () => {
     expect(opgeslagen.docentEmail).toBe('visser@school.nl');
   });
 });
+
+describe('Docent: CSV import TW1 docentidentiteit (Fase A5)', () => {
+  it('slaat docentAfkorting op bij CSV import door gebruiker met afkorting', async () => {
+    const { component, data, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: basisgegevens,
+    });
+
+    component.form.patchValue({ schooljaar: SCHOOLJAAR, toetsweek: 'TW1', klas: KLAS });
+    component.csvPreviewData.set([{
+      leerlingnummer: LEERLINGNUMMER,
+      leerling: 'Sam de Vries',
+      klas: KLAS,
+      vak: VAK,
+      aandachtspuntenRaw: 'Inhoudelijk',
+      waarZieJeDitAan: 'Geïmporteerde observatie.',
+      watWerktWel: 'Instructie volgen.',
+      leerlingActie: 'Actief meedoen.',
+      docentActie: 'Ondersteunen.',
+    }]);
+
+    await component.confirmImport();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(1);
+    const memo = data.memoTW1TW2()[0];
+    expect(memo.docentAfkorting).toBe('vis');
+    expect(memo.docentEmail).toBe('visser@school.nl');
+    expect(memo.waarZieJeDitAan).toBe('Geïmporteerde observatie.');
+  });
+
+  it('normaliseert hoofdletters in docentAfkorting naar kleine letters', async () => {
+    const { component, data, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'VIS', email: 'visser@school.nl' },
+      vul: basisgegevens,
+    });
+
+    component.form.patchValue({ schooljaar: SCHOOLJAAR, toetsweek: 'TW1', klas: KLAS });
+    component.csvPreviewData.set([{
+      leerlingnummer: LEERLINGNUMMER,
+      leerling: 'Sam de Vries',
+      klas: KLAS,
+      vak: VAK,
+      aandachtspuntenRaw: '',
+      waarZieJeDitAan: 'Geïmporteerde tekst.',
+      watWerktWel: '',
+      leerlingActie: '',
+      docentActie: '',
+    }]);
+
+    await component.confirmImport();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(1);
+    expect(data.memoTW1TW2()[0].docentAfkorting).toBe('vis');
+  });
+
+  it('blokkeert import en toont foutmelding wanneer ingelogde gebruiker geen docentAfkorting heeft', async () => {
+    const { component, data, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { email: 'visser@school.nl' },
+      vul: basisgegevens,
+    });
+
+    component.form.patchValue({ schooljaar: SCHOOLJAAR, toetsweek: 'TW1', klas: KLAS });
+    component.csvPreviewData.set([{
+      leerlingnummer: LEERLINGNUMMER,
+      leerling: 'Sam de Vries',
+      klas: KLAS,
+      vak: VAK,
+      aandachtspuntenRaw: '',
+      waarZieJeDitAan: 'Tekst.',
+      watWerktWel: '',
+      leerlingActie: '',
+      docentActie: '',
+    }]);
+
+    await component.confirmImport();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(0);
+    expect(component.melding()?.soort).toBe('fout');
+  });
+
+  it('valt niet terug op e-mail of naam wanneer docentAfkorting ontbreekt', async () => {
+    const { component, data, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { name: 'Visser', email: 'vis@school.nl' },
+      vul: basisgegevens,
+    });
+
+    component.form.patchValue({ schooljaar: SCHOOLJAAR, toetsweek: 'TW1', klas: KLAS });
+    component.csvPreviewData.set([{
+      leerlingnummer: LEERLINGNUMMER,
+      leerling: 'Sam de Vries',
+      klas: KLAS,
+      vak: VAK,
+      aandachtspuntenRaw: '',
+      waarZieJeDitAan: 'Tekst.',
+      watWerktWel: '',
+      leerlingActie: '',
+      docentActie: '',
+    }]);
+
+    await component.confirmImport();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(0);
+    expect(component.melding()?.soort).toBe('fout');
+  });
+
+  it('werkt een bestaande eigen memo bij in plaats van een dubbele te maken', async () => {
+    const { component, data, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: d => {
+        basisgegevens(d);
+        d.memoTW1TW2.set([
+          maakMemoTW12({
+            id: 'memo-vis-1',
+            schooljaar: SCHOOLJAAR,
+            toetsweek: 'TW1',
+            leerlingnummer: LEERLINGNUMMER,
+            vak: VAK,
+            docentAfkorting: 'vis',
+            docentEmail: 'visser@school.nl',
+            waarZieJeDitAan: 'Oude tekst.',
+          }),
+        ]);
+      },
+    });
+
+    component.form.patchValue({ schooljaar: SCHOOLJAAR, toetsweek: 'TW1', klas: KLAS });
+    component.csvPreviewData.set([{
+      leerlingnummer: LEERLINGNUMMER,
+      leerling: 'Sam de Vries',
+      klas: KLAS,
+      vak: VAK,
+      aandachtspuntenRaw: '',
+      waarZieJeDitAan: 'Bijgewerkte import tekst.',
+      watWerktWel: '',
+      leerlingActie: '',
+      docentActie: '',
+    }]);
+
+    await component.confirmImport();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(1);
+    const memo = data.memoTW1TW2()[0];
+    expect(memo.id).toBe('memo-vis-1');
+    expect(memo.waarZieJeDitAan).toBe('Bijgewerkte import tekst.');
+    expect(memo.docentAfkorting).toBe('vis');
+  });
+
+  it('overschrijft een memo van een collega met hetzelfde vak en dezelfde leerling nooit', async () => {
+    const { component, data, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl' },
+      vul: d => {
+        basisgegevens(d);
+        d.memoTW1TW2.set([
+          maakMemoTW12({
+            id: 'memo-collega',
+            schooljaar: SCHOOLJAAR,
+            toetsweek: 'TW1',
+            leerlingnummer: LEERLINGNUMMER,
+            vak: VAK,
+            docentAfkorting: 'jan',
+            docentEmail: DOCENT2.email,
+            docentNaam: DOCENT2.naam,
+            waarZieJeDitAan: 'Memo van collega Jansen.',
+          }),
+        ]);
+      },
+    });
+
+    component.form.patchValue({ schooljaar: SCHOOLJAAR, toetsweek: 'TW1', klas: KLAS });
+    component.csvPreviewData.set([{
+      leerlingnummer: LEERLINGNUMMER,
+      leerling: 'Sam de Vries',
+      klas: KLAS,
+      vak: VAK,
+      aandachtspuntenRaw: '',
+      waarZieJeDitAan: 'Eigen import memo van Visser.',
+      watWerktWel: '',
+      leerlingActie: '',
+      docentActie: '',
+    }]);
+
+    await component.confirmImport();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(2);
+    const collegaMemo = data.memoTW1TW2().find(m => m.id === 'memo-collega');
+    expect(collegaMemo?.waarZieJeDitAan).toBe('Memo van collega Jansen.');
+    expect(collegaMemo?.docentAfkorting).toBe('jan');
+
+    const eigenMemo = data.memoTW1TW2().find(m => m.id !== 'memo-collega');
+    expect(eigenMemo?.waarZieJeDitAan).toBe('Eigen import memo van Visser.');
+    expect(eigenMemo?.docentAfkorting).toBe('vis');
+  });
+
+  it('behoudt bestaande legacyvelden bij het bijwerken van een bestaande memo', async () => {
+    const { component, data, ververs } = await maakOmgeving(Memo1Component, {
+      rol: 'Docent',
+      gebruiker: { docentAfkorting: 'vis', email: 'visser@school.nl', name: 'Dr. Visser' },
+      vul: d => {
+        basisgegevens(d);
+        d.memoTW1TW2.set([
+          maakMemoTW12({
+            id: 'memo-legacy-1',
+            schooljaar: SCHOOLJAAR,
+            toetsweek: 'TW1',
+            leerlingnummer: LEERLINGNUMMER,
+            vak: VAK,
+            docentAfkorting: undefined,
+            docentEmail: 'visser@school.nl',
+            docentNaam: 'Dhr. Visser',
+            waarZieJeDitAan: 'Legacy tekst.',
+          }),
+        ]);
+      },
+    });
+
+    component.form.patchValue({ schooljaar: SCHOOLJAAR, toetsweek: 'TW1', klas: KLAS });
+    component.csvPreviewData.set([{
+      leerlingnummer: LEERLINGNUMMER,
+      leerling: 'Sam de Vries',
+      klas: KLAS,
+      vak: VAK,
+      aandachtspuntenRaw: '',
+      waarZieJeDitAan: 'Nieuwe tekst.',
+      watWerktWel: '',
+      leerlingActie: '',
+      docentActie: '',
+    }]);
+
+    await component.confirmImport();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(1);
+    const memo = data.memoTW1TW2()[0];
+    expect(memo.id).toBe('memo-legacy-1');
+    expect(memo.docentAfkorting).toBe('vis');
+    expect(memo.docentEmail).toBe('visser@school.nl');
+    expect(memo.docentNaam).toBeDefined();
+    expect(memo.waarZieJeDitAan).toBe('Nieuwe tekst.');
+  });
+});

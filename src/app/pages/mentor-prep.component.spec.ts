@@ -274,3 +274,92 @@ describe('Coordinator en beheerder houden de mentorfunctionaliteit', () => {
     });
   }
 });
+
+describe('Mentor: nieuwe docentmemo toevoegen', () => {
+  it('slaat een memo op met docentAfkorting via een gekoppeld DocentVak', async () => {
+    const { component, data, ververs } = await maakOmgeving(MentorPrepComponent, {
+      rol: 'Mentor',
+      vul: d => {
+        basisgegevens(d);
+        d.docenten.set([{ afkorting: 'vrj', naam: 'J. de Vries', actief: true }]);
+        d.docentVakken.set([maakDocentVak({ id: 'dv-1', docentAfkorting: 'vrj', docentNaam: 'J. de Vries', vak: 'Wiskunde' })]);
+      },
+    });
+
+    await kiesLeerling(component, ververs);
+    component.openCreateMemoModal();
+    component.createMemoForm.patchValue({
+      docentVakId: 'dv-1',
+      waarZieJeDitAan: 'Toetsresultaat onvoldoende',
+      watWerktWel: 'Extra uitleg',
+    });
+    await ververs();
+    await component.saveNewDocentMemo();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(1);
+    const opgeslagen = data.memoTW1TW2()[0];
+    expect(opgeslagen.docentAfkorting).toBe('vrj');
+    expect(opgeslagen.docentNaam).toBe('J. de Vries');
+    expect(opgeslagen.vak).toBe('Wiskunde');
+    expect(opgeslagen.waarZieJeDitAan).toBe('Toetsresultaat onvoldoende');
+  });
+
+  it('slaat een memo op via handmatige keuze uit canonieke docenten met docentAfkorting', async () => {
+    const { component, data, ververs } = await maakOmgeving(MentorPrepComponent, {
+      rol: 'Mentor',
+      vul: d => {
+        basisgegevens(d);
+        d.docenten.set([
+          { afkorting: 'bak', naam: 'K. Bakker', actief: true },
+        ]);
+      },
+    });
+
+    await kiesLeerling(component, ververs);
+    component.openCreateMemoModal();
+    component.createMemoForm.patchValue({
+      docentVakId: 'custom',
+      customVak: 'Natuurkunde',
+      customDocentAfkorting: 'bak',
+      waarZieJeDitAan: 'Aandacht nodig bij practica',
+    });
+    await ververs();
+    await component.saveNewDocentMemo();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(1);
+    const opgeslagen = data.memoTW1TW2()[0];
+    expect(opgeslagen.docentAfkorting).toBe('bak');
+    expect(opgeslagen.docentNaam).toBe('K. Bakker');
+    expect(opgeslagen.vak).toBe('Natuurkunde');
+  });
+
+  it('blokkeert handmatige invoer als docent onbekend of ontbrekend is', async () => {
+    const { component, data, ververs } = await maakOmgeving(MentorPrepComponent, {
+      rol: 'Mentor',
+      vul: d => {
+        basisgegevens(d);
+        d.docenten.set([
+          { afkorting: 'bak', naam: 'K. Bakker', actief: true },
+        ]);
+      },
+    });
+
+    await kiesLeerling(component, ververs);
+    component.openCreateMemoModal();
+    component.createMemoForm.patchValue({
+      docentVakId: 'custom',
+      customVak: 'Natuurkunde',
+      customDocentAfkorting: 'onbekend',
+      waarZieJeDitAan: 'Niet opgeslagen memo',
+    });
+    await ververs();
+    await component.saveNewDocentMemo();
+    await ververs();
+
+    expect(data.memoTW1TW2()).toHaveLength(0);
+    expect(component.melding()?.soort).toBe('fout');
+  });
+});
+

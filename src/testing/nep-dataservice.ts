@@ -510,6 +510,24 @@ export class NepDataService {
     }
   }
 
+  async updateDocentTaak(
+    id: string,
+    updates: Partial<DocentTaak>,
+  ) {
+    this.controleer('updateDocentTaak', id);
+
+    this.docentTaken.update(l =>
+      l.map(x =>
+        x.id === id
+          ? ({
+              ...x,
+              ...updates,
+            } as DocentTaak)
+          : x,
+      ),
+    );
+  }
+
   async zetTakenUit(
     nieuweTaken: Omit<DocentTaak, 'id'>[],
   ) {

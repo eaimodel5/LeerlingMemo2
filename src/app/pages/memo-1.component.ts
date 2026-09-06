@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { CommonModule } from '@angular/common';
 import { parseCsv, headersMatch } from '../utils/csv';
 import { filterVoorDocent, komtDocentOvereen, bouwDocentIdentiteitVelden } from '../utils/docent-identiteit';
+import { normaliseerAfkorting } from '../utils/docent-afkorting';
 import { wachtOpOpslag, Melding, MELDING_BEVESTIGD, MELDING_WACHT, meldingBijFout } from '../utils/opslag';
 
 @Component({
@@ -449,12 +450,23 @@ export class Memo1Component {
     const data = this.csvPreviewData();
     if (!data || this.isLocked()) return;
     
+    const gebruiker = this.authService.currentUser();
+    const docentAfkorting = normaliseerAfkorting(gebruiker?.docentAfkorting);
+    if (!docentAfkorting) {
+      const foutMelding = 'Importeren niet mogelijk: je account heeft geen geldige docentafkorting. Neem contact op met de beheerder.';
+      this.melding.set({ soort: 'fout', tekst: foutMelding });
+      if (typeof alert === 'function') {
+        try { alert(foutMelding); } catch { /* testomgeving */ }
+      }
+      return;
+    }
+
     const schooljaar = this.form.value.schooljaar!;
     const toetsweek = this.form.value.toetsweek as any;
-    const aangemaaktDoor = this.authService.currentUser()?.email || 'docent@school.nl';
+    const aangemaaktDoor = gebruiker?.email || 'docent@school.nl';
+    const doelDocent = { docentEmail: aangemaaktDoor, docentAfkorting };
     
     let successCount = 0;
-
     let mislukt = 0;
 
     for (const row of data) {
@@ -469,7 +481,8 @@ export class Memo1Component {
         leerlingnummer: dbLln.leerlingnummer,
         leerling: dbLln.leerling,
         klas: dbLln.klas,
-        docentNaam: this.authService.currentUser()?.name || 'Onbekend',
+        docentAfkorting,
+        docentNaam: gebruiker?.name || 'Onbekend',
         docentEmail: aangemaaktDoor,
         vak: row.vak,
         
@@ -491,10 +504,18 @@ export class Memo1Component {
         gewijzigdOp: new Date().toISOString()
       };
 
-      const existing = this.dataService.memoTW1TW2().find(m => m.schooljaar === schooljaar && m.toetsweek === toetsweek && m.leerlingnummer === dbLln.leerlingnummer && m.vak.toLowerCase() === row.vak.toLowerCase());
+      const existing = this.dataService.memoTW1TW2().find(m =>
+        m.schooljaar === schooljaar &&
+        m.toetsweek === toetsweek &&
+        m.leerlingnummer === dbLln.leerlingnummer &&
+        m.vak.trim().toLowerCase() === row.vak.trim().toLowerCase() &&
+        komtDocentOvereen(m, doelDocent)
+      );
 
       try {
         if (existing && existing.id) {
+          memoData.aangemaaktOp = existing.aangemaaktOp;
+          memoData.aangemaaktDoor = existing.aangemaaktDoor;
           await this.dataService.updateMemoTW1TW2(existing.id, memoData);
         } else {
           await this.dataService.addMemoTW1TW2(memoData);
@@ -505,9 +526,12 @@ export class Memo1Component {
       }
     }
 
-    alert(mislukt === 0
+    const samenvatting = mislukt === 0
       ? `${successCount} memo's geïmporteerd en opgeslagen.`
-      : `${successCount} memo's opgeslagen, ${mislukt} mislukt. Probeer de mislukte regels opnieuw.`);
+      : `${successCount} memo's opgeslagen, ${mislukt} mislukt. Probeer de mislukte regels opnieuw.`;
+    if (typeof alert === 'function') {
+      try { alert(samenvatting); } catch { /* testomgeving */ }
+    }
     this.csvPreviewData.set(null);
   }
 

@@ -17,9 +17,15 @@ import {
 } from '../utils/docent-afkorting';
 import { analyseerDocentMigratie } from '../utils/docent-migratie';
 
+export type DocentMigratieDoel =
+  | { collectie: 'docentVakken'; id: string }
+  | { collectie: 'docentTaken'; id: string }
+  | { collectie: 'memoTW1TW2'; id: string }
+  | { collectie: 'memoTW3'; id: string };
+
 /**
- * Een legacydocent uit bestaande Docenten/Vakken-koppelingen die nog niet
- * expliciet aan een geldige docentafkorting gekoppeld is.
+ * Een legacydocent uit bestaande records (Docenten/Vakken, DocentTaken, Memo's)
+ * die nog niet expliciet aan een geldige docentafkorting gekoppeld is.
  *
  * legacyEmail wordt alleen gebruikt om bestaande legacyrecords van dezelfde
  * oude identiteit bij elkaar te tonen. Het adres wordt niet naar /docenten
@@ -29,6 +35,7 @@ export interface OntbrekendeDocent {
   naam: string;
   legacyEmail: string;
   aantalKoppelingen: number;
+  doelen: DocentMigratieDoel[];
   koppelingIds: string[];
 }
 
@@ -193,7 +200,7 @@ export interface OntbrekendeDocent {
             <div class="divide-y divide-slate-100 max-h-80 overflow-y-auto">
               @for (
                 ontbreekt of zonderAfkorting();
-                track ontbreekt.naam + ontbreekt.legacyEmail
+                track ontbreekt.legacyEmail ? ('email:' + ontbreekt.legacyEmail) : (ontbreekt.doelen[0]?.collectie + ':' + ontbreekt.doelen[0]?.id)
               ) {
                 <div class="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div class="min-w-0">
@@ -207,8 +214,8 @@ export interface OntbrekendeDocent {
                       {{ ontbreekt.aantalKoppelingen }}
                       {{
                         ontbreekt.aantalKoppelingen === 1
-                          ? 'koppeling'
-                          : 'koppelingen'
+                          ? 'record'
+                          : 'records'
                       }}
                     </div>
                   </div>
@@ -217,7 +224,7 @@ export interface OntbrekendeDocent {
                     <button
                       type="button"
                       (click)="koppelBestaande(ontbreekt)"
-                      [disabled]="ontbreekt.koppelingIds.length === 0"
+                      [disabled]="ontbreekt.doelen.length === 0"
                       class="px-2.5 py-1 text-xs font-medium text-blue-700 bg-white hover:bg-blue-50 border border-blue-300 rounded transition-colors disabled:opacity-40"
                     >
                       Koppel bestaande
@@ -226,7 +233,7 @@ export interface OntbrekendeDocent {
                     <button
                       type="button"
                       (click)="nieuwVoor(ontbreekt)"
-                      [disabled]="ontbreekt.koppelingIds.length === 0"
+                      [disabled]="ontbreekt.doelen.length === 0"
                       class="px-2.5 py-1 text-xs font-medium text-amber-800 bg-white hover:bg-amber-50 border border-amber-300 rounded transition-colors disabled:opacity-40"
                     >
                       Nieuwe docent
@@ -346,14 +353,14 @@ export interface OntbrekendeDocent {
               {{ f.bestaand ? 'Docent bewerken' : 'Nieuwe docent' }}
             </h3>
 
-            @if (f.koppelingIds.length > 0) {
+            @if (f.doelen.length > 0) {
               <p class="text-xs text-amber-700 mb-4">
                 Na opslaan worden
-                {{ f.koppelingIds.length }}
+                {{ f.doelen.length }}
                 {{
-                  f.koppelingIds.length === 1
-                    ? 'gekozen legacykoppeling'
-                    : 'gekozen legacykoppelingen'
+                  f.doelen.length === 1
+                    ? 'gekozen legacyrecord'
+                    : 'gekozen legacyrecords'
                 }}
                 expliciet aan deze nieuwe docent gekoppeld.
               </p>
@@ -486,8 +493,8 @@ export interface OntbrekendeDocent {
               </div>
 
               <div class="mt-1">
-                <strong>Aantal koppelingen:</strong>
-                {{ k.ontbreekt.koppelingIds.length }}
+                <strong>Aantal records:</strong>
+                {{ k.ontbreekt.doelen.length }}
               </div>
             </div>
 
@@ -530,6 +537,7 @@ export class ManageDocentenComponent {
     actief: boolean;
     bestaand: boolean;
     koppelingIds: string[];
+    doelen: DocentMigratieDoel[];
   } | null>(null);
 
   koppelingFormulier = signal<{
@@ -563,6 +571,42 @@ export class ManageDocentenComponent {
             }),
           ),
         },
+        {
+          naam: 'DocentTaken',
+          records: this.dataService.docentTaken().map(
+            (taak, index) => ({
+              id:
+                taak.id ??
+                `docentTaak:${index}`,
+              docentAfkorting:
+                taak.docentAfkorting,
+            }),
+          ),
+        },
+        {
+          naam: 'Memo TW1/TW2',
+          records: this.dataService.memoTW1TW2().map(
+            (memo, index) => ({
+              id:
+                memo.id ??
+                `memoTW1TW2:${index}`,
+              docentAfkorting:
+                memo.docentAfkorting,
+            }),
+          ),
+        },
+        {
+          naam: 'Memo TW3',
+          records: this.dataService.memoTW3().map(
+            (memo, index) => ({
+              id:
+                memo.id ??
+                `memoTW3:${index}`,
+              docentAfkorting:
+                memo.docentAfkorting,
+            }),
+          ),
+        },
       ],
     ),
   );
@@ -582,71 +626,97 @@ export class ManageDocentenComponent {
   });
 
   /**
-   * Bestaande Docenten/Vakken-records die nog niet expliciet naar een
-   * geldige /docenten-afkorting wijzen.
+   * Identificeert docenten uit de vier datasets (Docenten/Vakken, DocentTaken,
+   * Memo TW1/TW2 en Memo TW3) die nog niet naar een geldige /docenten-afkorting
+   * wijzen.
    *
    * Een gelijke naam telt niet als koppeling.
    */
   zonderAfkorting = computed<OntbrekendeDocent[]>(() => {
     const bekend = this.dataService.docenten();
     const perDocent = new Map<string, OntbrekendeDocent>();
+    let uniekeSleutelTeller = 0;
 
-    for (
-      const [index, koppeling]
-      of this.dataService.docentVakken().entries()
-    ) {
-      if (
-        koppeling.docentAfkorting &&
-        bekend.some(d =>
-          zelfdeAfkorting(
-            d.afkorting,
-            koppeling.docentAfkorting,
-          ),
-        )
-      ) {
-        continue;
+    const verwerk = (
+      collectie: DocentMigratieDoel['collectie'],
+      records: readonly {
+        id?: string;
+        docentNaam?: string;
+        docentEmail?: string;
+        docentAfkorting?: string;
+      }[],
+    ) => {
+      for (const record of records) {
+        if (
+          record.docentAfkorting &&
+          bekend.some(d =>
+            zelfdeAfkorting(
+              d.afkorting,
+              record.docentAfkorting,
+            ),
+          )
+        ) {
+          continue;
+        }
+
+        const email = (record.docentEmail ?? '').trim();
+        const naam = (record.docentNaam ?? '').trim();
+
+        if (!naam && !email && !record.id) {
+          continue;
+        }
+
+        /*
+         * Alleen legacy-e-mail wordt gebruikt om bestaande oude records voor
+         * dezelfde beheerhandeling te groeperen. Records zonder legacy-e-mail
+         * mogen niet op naam worden samengevoegd: die blijven ieder apart.
+         *
+         * Dit bepaalt NIET welke nieuwe docent erbij hoort. Die keuze maakt de
+         * beheerder daarna zelf.
+         */
+        const sleutel = email
+          ? `email:${email.toLowerCase()}`
+          : `zonder-email:${collectie}:${record.id ?? ++uniekeSleutelTeller}`;
+
+        const bestaand = perDocent.get(sleutel) ?? {
+          naam:
+            naam ||
+            (record.docentAfkorting
+              ? `Afkorting: ${record.docentAfkorting}`
+              : 'Naam onbekend'),
+          legacyEmail: email,
+          aantalKoppelingen: 0,
+          doelen: [],
+          koppelingIds: [],
+        };
+
+        if (
+          (!bestaand.naam || bestaand.naam === 'Naam onbekend') &&
+          naam
+        ) {
+          bestaand.naam = naam;
+        }
+
+        if (
+          record.id &&
+          !bestaand.doelen.some(
+            d => d.collectie === collectie && d.id === record.id,
+          )
+        ) {
+          bestaand.doelen.push({ collectie, id: record.id });
+          bestaand.koppelingIds.push(record.id);
+        }
+
+        bestaand.aantalKoppelingen = bestaand.doelen.length;
+
+        perDocent.set(sleutel, bestaand);
       }
+    };
 
-      const email =
-        (koppeling.docentEmail ?? '').trim();
-
-      const naam =
-        (koppeling.docentNaam ?? '').trim();
-
-      if (!naam && !email) {
-        continue;
-      }
-
-      /*
-       * Alleen legacy-e-mail wordt gebruikt om bestaande oude records voor
-       * dezelfde beheerhandeling te groeperen. Bij records zonder legacy-e-mail
-       * blijft ieder record apart.
-       *
-       * Dit bepaalt NIET welke nieuwe docent erbij hoort. Die keuze maakt de
-       * beheerder daarna zelf.
-       */
-      const sleutel = email
-        ? `email:${email.toLowerCase()}`
-        : `record:${koppeling.id ?? index}`;
-
-      const bestaand = perDocent.get(sleutel) ?? {
-        naam,
-        legacyEmail: email,
-        aantalKoppelingen: 0,
-        koppelingIds: [],
-      };
-
-      bestaand.aantalKoppelingen += 1;
-
-      if (
-        koppeling.id &&
-        !bestaand.koppelingIds.includes(koppeling.id)
-      ) {
-        bestaand.koppelingIds.push(koppeling.id);
-      }
-
-      perDocent.set(sleutel, bestaand);
-    }
+    verwerk('docentVakken', this.dataService.docentVakken());
+    verwerk('docentTaken', this.dataService.docentTaken());
+    verwerk('memoTW1TW2', this.dataService.memoTW1TW2());
+    verwerk('memoTW3', this.dataService.memoTW3());
 
     return [...perDocent.values()].sort((a, b) =>
       a.naam.localeCompare(b.naam, 'nl'),
@@ -688,7 +758,7 @@ export class ManageDocentenComponent {
   kanKoppelen = computed(() => {
     const f = this.koppelingFormulier();
 
-    if (!f || f.ontbreekt.koppelingIds.length === 0) {
+    if (!f || f.ontbreekt.doelen.length === 0) {
       return false;
     }
 
@@ -747,6 +817,7 @@ export class ManageDocentenComponent {
       actief: true,
       bestaand: false,
       koppelingIds: [],
+      doelen: [],
     });
   }
 
@@ -762,10 +833,11 @@ export class ManageDocentenComponent {
 
     this.formulier.set({
       afkorting: '',
-      naam: ontbreekt.naam,
+      naam: ontbreekt.naam === 'Naam onbekend' ? '' : ontbreekt.naam,
       actief: true,
       bestaand: false,
       koppelingIds: [...ontbreekt.koppelingIds],
+      doelen: [...ontbreekt.doelen],
     });
   }
 
@@ -773,7 +845,7 @@ export class ManageDocentenComponent {
    * Opent een expliciete keuze uit bestaande /docenten-records.
    */
   koppelBestaande(ontbreekt: OntbrekendeDocent) {
-    if (ontbreekt.koppelingIds.length === 0) {
+    if (ontbreekt.doelen.length === 0) {
       this.melding.set({
         soort: 'fout',
         tekst:
@@ -799,24 +871,52 @@ export class ManageDocentenComponent {
       actief: docent.actief,
       bestaand: true,
       koppelingIds: [],
+      doelen: [],
     });
+  }
+
+  private async schrijfDocentAfkortingNaarDoelen(
+    doelen: readonly DocentMigratieDoel[],
+    docentAfkorting: string,
+  ) {
+    const afkorting =
+      normaliseerAfkorting(docentAfkorting);
+
+    for (const doel of doelen) {
+      switch (doel.collectie) {
+        case 'docentVakken':
+          await this.dataService.updateDocentVak(doel.id, {
+            docentAfkorting: afkorting,
+          });
+          break;
+        case 'docentTaken':
+          await this.dataService.updateDocentTaak(doel.id, {
+            docentAfkorting: afkorting,
+          });
+          break;
+        case 'memoTW1TW2':
+          await this.dataService.updateMemoTW1TW2(doel.id, {
+            docentAfkorting: afkorting,
+          });
+          break;
+        case 'memoTW3':
+          await this.dataService.updateMemoTW3(doel.id, {
+            docentAfkorting: afkorting,
+          });
+          break;
+      }
+    }
   }
 
   private async schrijfDocentAfkortingNaarKoppelingen(
     koppelingIds: readonly string[],
     docentAfkorting: string,
   ) {
-    const afkorting =
-      normaliseerAfkorting(docentAfkorting);
-
-    for (const id of koppelingIds) {
-      await this.dataService.updateDocentVak(
-        id,
-        {
-          docentAfkorting: afkorting,
-        },
-      );
-    }
+    const doelen: DocentMigratieDoel[] = koppelingIds.map(id => ({
+      collectie: 'docentVakken',
+      id,
+    }));
+    await this.schrijfDocentAfkortingNaarDoelen(doelen, docentAfkorting);
   }
 
   async bewaarKoppeling() {
@@ -833,27 +933,33 @@ export class ManageDocentenComponent {
     this.melding.set(null);
 
     try {
-      await this.schrijfDocentAfkortingNaarKoppelingen(
-        f.ontbreekt.koppelingIds,
+      await this.schrijfDocentAfkortingNaarDoelen(
+        f.ontbreekt.doelen,
         afkorting,
       );
 
       const aantal =
-        f.ontbreekt.koppelingIds.length;
+        f.ontbreekt.doelen.length;
 
       this.melding.set({
         soort: 'ok',
         tekst:
           `${aantal} ${
             aantal === 1
-              ? 'koppeling is'
-              : 'koppelingen zijn'
+              ? 'record is'
+              : 'records zijn'
           } gekoppeld aan ${toonAfkorting(afkorting)}.`,
       });
 
       this.koppelingFormulier.set(null);
     } catch (e) {
-      this.melding.set(meldingBijFout(e));
+      const fout = meldingBijFout(e);
+      this.melding.set({
+        soort: 'fout',
+        tekst:
+          `Niet alle records konden worden bijgewerkt. Een deel is mogelijk al gekoppeld.\n` +
+          fout.tekst,
+      });
     } finally {
       this.bezig.set(false);
     }
@@ -891,13 +997,15 @@ export class ManageDocentenComponent {
 
       docentOpgeslagen = true;
 
-      if (f.koppelingIds.length > 0) {
-        await this.schrijfDocentAfkortingNaarKoppelingen(
-          f.koppelingIds,
+      const doelen = f.doelen ?? [];
+
+      if (doelen.length > 0) {
+        await this.schrijfDocentAfkortingNaarDoelen(
+          doelen,
           afkorting,
         );
 
-        const aantal = f.koppelingIds.length;
+        const aantal = doelen.length;
 
         this.melding.set({
           soort: 'ok',
@@ -905,8 +1013,8 @@ export class ManageDocentenComponent {
             `Docent ${toonAfkorting(afkorting)} is opgeslagen en ` +
             `${aantal} ${
               aantal === 1
-                ? 'legacykoppeling is'
-                : 'legacykoppelingen zijn'
+                ? 'legacyrecord is'
+                : 'legacyrecords zijn'
             } gekoppeld.`,
         });
       } else {
@@ -921,7 +1029,7 @@ export class ManageDocentenComponent {
     } catch (e) {
       if (
         docentOpgeslagen &&
-        f.koppelingIds.length > 0
+        (f.doelen?.length ?? 0) > 0
       ) {
         const fout = meldingBijFout(e);
 
@@ -931,8 +1039,8 @@ export class ManageDocentenComponent {
           soort: 'fout',
           tekst:
             `Docent ${toonAfkorting(afkorting)} is wel opgeslagen, ` +
-            `maar het koppelen van de legacygegevens is mislukt. ` +
-            `Gebruik daarna "Koppel bestaande" om het opnieuw te proberen.\n` +
+            `maar het koppelen van de legacygegevens is niet (volledig) gelukt. ` +
+            `Een deel is mogelijk al gekoppeld. Gebruik daarna "Koppel bestaande" om het opnieuw te proberen.\n` +
             fout.tekst,
         });
       } else {

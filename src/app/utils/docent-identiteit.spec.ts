@@ -125,13 +125,13 @@ describe('docent-identiteit helper & resolver (PR 7)', () => {
     });
 
     describe('Oude data (beide legacy)', () => {
-      it('geeft true bij gelijke e-mailadressen (hoofdletterongevoelig)', () => {
+      it('geeft false bij gelijke e-mailadressen in PR9 (hoofdletterongevoelig)', () => {
         expect(
           komtDocentOvereen(
             { docentEmail: 'Jansen@School.NL' },
             { docentEmail: 'jansen@school.nl' }
           )
-        ).toBe(true);
+        ).toBe(false);
       });
 
       it('geeft false bij verschillende e-mailadressen', () => {
@@ -145,7 +145,7 @@ describe('docent-identiteit helper & resolver (PR 7)', () => {
     });
 
     describe('Gemengde data (overgangssituatie modern vs legacy)', () => {
-      it('geeft true wanneer de moderne gebruiker via fallbackEmail matcht met een legacy record', () => {
+      it('geeft false in PR9 wanneer fallbackEmail zou matchen', () => {
         const ingelogdeDocent = {
           docentAfkorting: 'vis',
           email: 'visser@school.nl',
@@ -155,8 +155,8 @@ describe('docent-identiteit helper & resolver (PR 7)', () => {
           // geen docentAfkorting
         };
 
-        expect(komtDocentOvereen(ingelogdeDocent, legacyTaak)).toBe(true);
-        expect(komtDocentOvereen(legacyTaak, ingelogdeDocent)).toBe(true);
+        expect(komtDocentOvereen(ingelogdeDocent, legacyTaak)).toBe(false);
+        expect(komtDocentOvereen(legacyTaak, ingelogdeDocent)).toBe(false);
       });
 
       it('geeft false wanneer de e-mailadressen in een gemengde situatie niet overeenkomen', () => {
@@ -197,11 +197,11 @@ describe('docent-identiteit helper & resolver (PR 7)', () => {
       { id: 't4', docentEmail: 'bakker@school.nl', vak: 'Engels' }, // legacy taak van bakker
     ];
 
-    it('filterVoorDocent filtert zowel moderne als legacy taken voor een docent met afkorting en email', () => {
+    it('filterVoorDocent filtert uitsluitend moderne taken in PR9', () => {
       const docentVis = { docentAfkorting: 'vis', email: 'visser@school.nl' };
       const result = filterVoorDocent(taken, docentVis);
 
-      expect(result.map(t => t.id)).toEqual(['t1', 't2']);
+      expect(result.map(t => t.id)).toEqual(['t1']);
     });
 
     it('filterVoorDocent filtert uitsluitend via afkorting als beide modern zijn', () => {
@@ -211,11 +211,11 @@ describe('docent-identiteit helper & resolver (PR 7)', () => {
       expect(result.map(t => t.id)).toEqual(['t3']);
     });
 
-    it('filterVoorDocent werkt ook voor een legacy docent (zonder afkorting)', () => {
+    it('filterVoorDocent weigert legacy docenten in PR9', () => {
       const legacyDocent = { email: 'bakker@school.nl' };
       const result = filterVoorDocent(taken, legacyDocent);
 
-      expect(result.map(t => t.id)).toEqual(['t4']);
+      expect(result.map(t => t.id)).toEqual([]);
     });
 
     it('vindVoorDocent vindt het eerste overeenkomstige item', () => {
@@ -244,16 +244,11 @@ describe('docent-identiteit helper & resolver (PR 7)', () => {
       });
     });
 
-    it('bouwt velden zonder docentAfkorting als deze ontbreekt (legacy)', () => {
-      const velden = bouwDocentIdentiteitVelden(
+    it('gooit een Error zonder docentAfkorting als deze ontbreekt (PR9)', () => {
+      expect(() => bouwDocentIdentiteitVelden(
         { email: 'jansen@school.nl' },
         'standaard@school.nl'
-      );
-
-      expect(velden).toEqual({
-        docentEmail: 'jansen@school.nl',
-      });
-      expect(velden.docentAfkorting).toBeUndefined();
+      )).toThrowError(/docentAfkorting/);
     });
 
     it('gebruikt standaardEmail indien geen adres gevonden', () => {

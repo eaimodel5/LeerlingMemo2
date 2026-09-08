@@ -1,0 +1,11 @@
+--- src/app/pages/manage-students.component.ts
++++ src/app/pages/manage-students.component.ts
+@@ -60,2 +60,9 @@
+ 
++  // Import mapping state
++  showMappingModal = signal(false);
++  importMappings = signal<{ bronNaam: string, gekozenAfkorting: string }[]>([]);
++  pendingImportData = signal<{ id?: string; data: Omit<Leerling, 'id'> }[]>([]);
++  importStats = signal<{ overgeslagen: number, zonderMentor: number, totaal: number }>({ overgeslagen: 0, zonderMentor: 0, totaal: 0 });
++
+   // ... overige methods

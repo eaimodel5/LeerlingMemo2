@@ -115,6 +115,7 @@ export class AuthService {
 
       const data = snap.data() as AccessCode;
       if (!isActieveCode(data)) return fout('code-ingetrokken');
+      if (!data.docentAfkorting) return fout('code-incompleet'); // PR9
 
       const gebruiker: AuthUser = {
         name: data.ownerName,
@@ -122,7 +123,7 @@ export class AuthService {
         role: data.role,
         vak: data.vak,
         code: snap.id,
-        ...(data.docentAfkorting ? { docentAfkorting: data.docentAfkorting } : {}),
+        docentAfkorting: data.docentAfkorting,
       };
 
       await this.schrijfSessie(uid, gebruiker);

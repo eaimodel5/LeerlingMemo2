@@ -198,11 +198,7 @@ export function komtDocentOvereen(
     return zelfdeAfkorting(idA.docentAfkorting, idB.docentAfkorting);
   }
 
-  // Situatie 2 en 3: Ten minste één is legacy (geen docentAfkorting)
-  // Gebruik e-mailadres als tijdelijke fallback waar beide over een adres beschikken.
-  if (idA.fallbackEmail && idB.fallbackEmail) {
-    return zelfdeEmail(idA.fallbackEmail, idB.fallbackEmail);
-  }
+  // PR9: Geen fallback meer op e-mail. Alleen nog matchen op docentAfkorting.
 
   // Geen gemeenschappelijke vergelijkingsbasis mogelijk zonder gokken
   return false;
@@ -251,14 +247,17 @@ export function heeftDocentKoppeling(
 export function bouwDocentIdentiteitVelden(
   bron: DocentIdentiteitDrager | null | undefined,
   standaardEmail = ''
-): { docentAfkorting?: string; docentEmail: string } {
+): { docentAfkorting: string; docentEmail: string } {
   const opgelost = losDocentIdentiteitOp(bron);
+  
+  if (!opgelost.docentAfkorting) {
+    throw new Error('Nieuwe functionele records vereisen een canonieke docentAfkorting (PR9).');
+  }
+  
   const email = opgelost.fallbackEmail || standaardEmail;
-  const velden: { docentAfkorting?: string; docentEmail: string } = {
+
+  return {
+    docentAfkorting: opgelost.docentAfkorting,
     docentEmail: email,
   };
-  if (opgelost.docentAfkorting) {
-    velden.docentAfkorting = opgelost.docentAfkorting;
-  }
-  return velden;
 }

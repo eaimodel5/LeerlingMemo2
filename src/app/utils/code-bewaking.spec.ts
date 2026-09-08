@@ -16,7 +16,7 @@ function nepAbonnement() {
       melder = m;
       return stop;
     },
-    meld: (bestaat: boolean, data?: { active?: boolean; used?: boolean }) => melder?.(bestaat, data),
+    meld: (bestaat: boolean, data?: { active?: boolean; used?: boolean; docentAfkorting?: string }) => melder?.(bestaat, data),
   };
 }
 
@@ -37,8 +37,8 @@ describe('CodeBewaking', () => {
     const beeindig = vi.fn();
 
     bewaking.volg(abonnement.abonneer, beeindig);
-    abonnement.meld(true, { active: true, used: false });
-    abonnement.meld(true, { active: true, used: false });
+    abonnement.meld(true, { active: true, used: false, docentAfkorting: 'vis' });
+    abonnement.meld(true, { active: true, used: false, docentAfkorting: 'vis' });
 
     expect(beeindig).not.toHaveBeenCalled();
     expect(bewaking.actief).toBe(true);
@@ -52,7 +52,7 @@ describe('CodeBewaking', () => {
     const beeindig = vi.fn();
 
     bewaking.volg(abonnement.abonneer, beeindig);
-    abonnement.meld(true, {});
+    abonnement.meld(true, { docentAfkorting: 'vis' });
 
     expect(beeindig).not.toHaveBeenCalled();
   });

@@ -104,6 +104,8 @@ export class DataService {
    * luisteraar was dood en het scherm bleef leeg alsof er geen gegevens waren.
    */
   verbindingsfout = signal<string | null>(null);
+  allesGeladen = signal<boolean>(false);
+  private loadedCollections = new Set<string>();
 
   private luisteraars = new Luisteraars();
 
@@ -161,36 +163,54 @@ export class DataService {
     this.classLocks.set([]);
     this.docentTaken.set([]);
     this.verbindingsfout.set(null);
+    this.loadedCollections.clear();
+    this.allesGeladen.set(false);
+  }
+
+  private markLoaded(collectionName: string) {
+    this.loadedCollections.add(collectionName);
+    if (this.loadedCollections.size >= 9) { // 9 collections
+      this.allesGeladen.set(true);
+    }
   }
 
   private maakLuisteraars(): Stopper[] {
     return [
       onSnapshot(collection(db, 'leerlingen'), (snapshot) => {
         this.leerlingen.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Leerling)));
+      this.markLoaded('leerlingen');
       }, (error) => this.meldVerbindingsprobleem(error, 'leerlingen')),
       onSnapshot(collection(db, 'docenten'), (snapshot) => {
         this.docenten.set(snapshot.docs.map(d => ({ ...d.data(), afkorting: d.id } as Docent)));
+      this.markLoaded('docenten');
       }, (error) => this.meldVerbindingsprobleem(error, 'docenten')),
       onSnapshot(collection(db, 'docentenVakken'), (snapshot) => {
         this.docentVakken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentVak)));
+      this.markLoaded('docentenVakken');
       }, (error) => this.meldVerbindingsprobleem(error, 'docentenVakken')),
       onSnapshot(collection(db, 'memoTW1TW2'), (snapshot) => {
         this.memoTW1TW2.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MemoTW1TW2)));
+      this.markLoaded('memoTW1TW2');
       }, (error) => this.meldVerbindingsprobleem(error, 'memoTW1TW2')),
       onSnapshot(collection(db, 'memoTW3'), (snapshot) => {
         this.memoTW3.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MemoTW3)));
+      this.markLoaded('memoTW3');
       }, (error) => this.meldVerbindingsprobleem(error, 'memoTW3')),
       onSnapshot(collection(db, 'mentorVoorbereiding'), (snapshot) => {
         this.mentorVoorbereiding.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as MentorVoorbereiding)));
+      this.markLoaded('mentorVoorbereiding');
       }, (error) => this.meldVerbindingsprobleem(error, 'mentorVoorbereiding')),
       onSnapshot(collection(db, 'voortgangsplan'), (snapshot) => {
         this.voortgangsplan.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as Voortgangsplan)));
+      this.markLoaded('voortgangsplan');
       }, (error) => this.meldVerbindingsprobleem(error, 'voortgangsplan')),
       onSnapshot(collection(db, 'classLocks'), (snapshot) => {
         this.classLocks.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as ClassLock)));
+      this.markLoaded('classLocks');
       }, (error) => this.meldVerbindingsprobleem(error, 'classLocks')),
       onSnapshot(collection(db, 'docentTaken'), (snapshot) => {
         this.docentTaken.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as DocentTaak)));
+      this.markLoaded('docentTaken');
       }, (error) => this.meldVerbindingsprobleem(error, 'docentTaken')),
     ];
   }

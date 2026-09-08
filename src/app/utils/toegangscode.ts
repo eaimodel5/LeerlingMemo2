@@ -148,10 +148,12 @@ export function moetUitloggenNaIntrekken(
  */
 export function sessieMoetStoppen(
   bestaat: boolean,
-  data?: Pick<AccessCode, 'active' | 'used'> | null,
+  data?: Pick<AccessCode, 'active' | 'used' | 'docentAfkorting'> | null,
 ): boolean {
   if (!bestaat) return true;
-  return !isActieveCode(data);
+  if (!isActieveCode(data)) return true;
+  if (!data?.docentAfkorting) return true; // PR9 vereist docentAfkorting
+  return false;
 }
 
 export interface AccessCodeMigratieProbleem {
@@ -177,15 +179,11 @@ export interface AccessCodeMigratieStatus {
 /**
  * Bepaalt of een toegangscode volgens de autorisatielogica een docentidentiteit (docentAfkorting) nodig heeft.
  *
- * - Actieve codes met rol 'Docent' hebben taken en schrijven memo's;
- * - Actieve codes met rol 'Mentor' vertegenwoordigen de mentorrelatie met leerlingen;
- * - Inactieve/ingetrokken codes kunnen niet inloggen en blijven geblokkeerd;
- * - Superuser en Coordinator opereren schoolbreed en vereisen geen persoonlijke docentkoppeling,
- *   tenzij er een docentAfkorting is ingevuld (die dan wel geldig moet zijn).
+ * Alle actieve personeelscodes (Docent, Mentor, Coordinator, Superuser) moeten voor PR8
+ * een geldige canonieke docentAfkorting hebben. Inactieve/ingetrokken codes niet.
  */
 export function codeVereistDocentIdentiteit(code: Pick<AccessCode, 'role' | 'active' | 'used'>): boolean {
-  if (!isActieveCode(code)) return false;
-  return code.role === 'Docent' || code.role === 'Mentor';
+  return isActieveCode(code);
 }
 
 /**

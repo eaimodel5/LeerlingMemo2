@@ -437,7 +437,6 @@ describe('SuperuserComponent toegangscodes', () => {
       const call = vi.mocked(setDoc).mock.calls[0];
       expect(call[1]).toEqual({
         docentAfkorting: 'bak',
-        ownerName: 'Els Bakker',
       });
 
       // Modal gesloten en melding gegeven
@@ -448,7 +447,7 @@ describe('SuperuserComponent toegangscodes', () => {
       // Lokale code is gemuteerd
       const bijgewerkt = component.codes().find(c => c.id === 'DOC-LEGACY');
       expect(bijgewerkt?.docentAfkorting).toBe('bak');
-      expect(bijgewerkt?.ownerName).toBe('Els Bakker');
+      expect(bijgewerkt?.ownerName).toBe('Oude Onbekende Naam');
       expect(component.migratieStatus().problemen).toBe(0);
     });
 

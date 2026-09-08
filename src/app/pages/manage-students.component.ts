@@ -255,6 +255,62 @@ import {
         </div>
       }
 
+      
+      <!-- Mapping Modal -->
+      @if (showMappingModal()) {
+        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60] overflow-y-auto">
+          <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col my-8">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50 sticky top-0">
+              <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wide">Koppel Mentoren uit Import</h3>
+              <button (click)="cancelImport()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                <mat-icon class="text-[20px] w-[20px] h-[20px]">close</mat-icon>
+              </button>
+            </div>
+            <div class="p-6 overflow-y-auto">
+              <p class="text-sm text-slate-600 mb-4">
+                De volgende mentornamen uit het importbestand zijn nog niet gekoppeld aan een canonieke docent.
+                Kies voor elke naam de juiste docent. (Kies "-- Geen --" om de mentor te wissen).
+              </p>
+              
+              <div class="space-y-4">
+                @for (mapping of importMappings(); track mapping.bronNaam; let idx = $index) {
+                  <div class="flex items-center gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div class="w-1/2">
+                      <div class="text-xs text-slate-500">Naam in bestand</div>
+                      <div class="font-medium text-sm text-slate-800">{{ mapping.bronNaam || '(Leeg/Onbekend)' }}</div>
+                    </div>
+                    <div class="w-1/2">
+                      <div class="text-xs text-slate-500 mb-1">Koppel aan</div>
+                      <select
+                        [value]="mapping.gekozenAfkorting"
+                        (change)="updateMapping(idx, $event)"
+                        class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">-- Geen / Wis mentor --</option>
+                        @for (d of actieveDocenten(); track d.afkorting) {
+                          <option [value]="d.afkorting">{{ toon(d.afkorting) }} - {{ d.naam }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+            <div class="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3 sticky bottom-0">
+              <button
+                (click)="cancelImport()"
+                class="px-4 py-2 text-sm font-medium bg-white border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50">
+                Annuleren
+              </button>
+              <button
+                (click)="processImport()"
+                class="px-4 py-2 text-sm font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                Opslaan & Importeren
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
       <!-- Formulier Modal -->
       @if (showForm()) {
         <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 transition-opacity">
@@ -354,6 +410,11 @@ export class ManageStudentsComponent {
   filterKlas = signal('');
   showForm = signal(false);
   bezig = signal(false);
+
+  showMappingModal = signal(false);
+  importMappings = signal<{ bronNaam: string, gekozenAfkorting: string }[]>([]);
+  pendingImportData = signal<any[]>([]);
+
   editingId = signal<string | null>(null);
 
   alleenMentorProblemen = signal(false);
@@ -544,6 +605,83 @@ export class ManageStudentsComponent {
     }
   }
 
+  
+  updateMapping(index: number, event: Event) {
+    const afk = (event.target as HTMLSelectElement).value;
+    this.importMappings.update(mappings => {
+      const updated = [...mappings];
+      updated[index].gekozenAfkorting = afk;
+      return updated;
+    });
+  }
+
+  cancelImport() {
+    this.showMappingModal.set(false);
+    this.pendingImportData.set([]);
+    this.importMappings.set([]);
+  }
+
+  async processImport() {
+    this.showMappingModal.set(false);
+    this.bezig.set(true);
+    
+    try {
+      const mappings = new Map(this.importMappings().map(m => [m.bronNaam, m.gekozenAfkorting]));
+      const teSchrijven: { id?: string; data: any }[] = [];
+      const data = this.pendingImportData();
+      
+      for (const item of data) {
+        let finAfk = item.data.mentorAfkorting;
+        let finNaam = item.data.mentorNaam;
+        let finEmail = item.data.mentorEmail;
+        
+        if (!finAfk && finNaam && mappings.has(finNaam)) {
+          const mapAfk = mappings.get(finNaam);
+          if (mapAfk) {
+            const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, mapAfk));
+            if (docent) {
+              finAfk = normaliseerAfkorting(docent.afkorting);
+              finNaam = docent.naam;
+            } else {
+              finAfk = '';
+              finNaam = '';
+              finEmail = '';
+            }
+          } else {
+            finAfk = '';
+            finNaam = '';
+            finEmail = '';
+          }
+        }
+        
+        const finalData = { ...item.data };
+        if (finAfk) {
+          finalData.mentorAfkorting = finAfk;
+          finalData.mentorNaam = finNaam;
+          finalData.mentorEmail = finEmail;
+        } else {
+          delete finalData.mentorAfkorting;
+          finalData.mentorNaam = '';
+          finalData.mentorEmail = '';
+        }
+        
+        teSchrijven.push({ id: item.id, data: finalData });
+      }
+      
+      const nieuw = teSchrijven.filter(t => !t.id).length;
+      const bijgewerkt = teSchrijven.length - nieuw;
+      
+      await this.dataService.bulkSaveLeerlingen(teSchrijven);
+      alert(`Import klaar: ${nieuw} nieuw, ${bijgewerkt} bijgewerkt.`);
+    } catch {
+      alert('Er ging iets mis bij het opslaan.');
+    } finally {
+      this.bezig.set(false);
+      this.pendingImportData.set([]);
+      this.importMappings.set([]);
+    }
+  }
+
   importCSV(event: Event) {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -556,7 +694,7 @@ export class ManageStudentsComponent {
 
       const rows = parseCsv(text);
       if (rows.length < 2) {
-        alert('Er staan geen regels onder de kopregel. Controleer of je het juiste bestand hebt gekozen.');
+        alert('Er staan geen regels onder de kopregel.');
         input.value = '';
         return;
       }
@@ -564,114 +702,81 @@ export class ManageStudentsComponent {
       const headers = normaliseerKoppen(rows[0]);
       const schooljaar = '2026-2027';
 
-      const teSchrijven: { id?: string; data: Omit<Leerling, 'id'> }[] = [];
-      let overgeslagen = 0;
-      let zonderMentor = 0;
-      let zonderMentorEmail = 0;
+      const parsedData: { id?: string; data: any }[] = [];
+      const onbekendeMentoren = new Set<string>();
+      
+      const inDitBestand = new Set<string>();
       const afgewezenOnbekendeAfkorting: string[] = [];
 
-      // Binnen één bestand kan hetzelfde leerlingnummer twee keer voorkomen.
-      const inDitBestand = new Set<string>();
-
       for (let i = 1; i < rows.length; i++) {
-        // De kolomherkenning staat in leerling-import.ts, met tests tegen een
-        // echte Magister-export.
         const { leerlingnummer, leerling, klas, mentorNaam, mentorEmail, mentorAfkorting, actief } =
           leesLeerlingRij(rijNaarObject(headers, rows[i]));
 
-        if (!leerlingnummer || !leerling) { overgeslagen++; continue; }
-        if (inDitBestand.has(leerlingnummer)) { overgeslagen++; continue; }
+        if (!leerlingnummer || !leerling) continue;
+        if (inDitBestand.has(leerlingnummer)) continue;
         inDitBestand.add(leerlingnummer);
 
-        // Ontdubbelen: één leerling per leerlingnummer per schooljaar.
         const bestaand = this.dataService.leerlingen().find(l =>
           l.leerlingnummer === leerlingnummer && l.schooljaar === schooljaar
         );
 
-        let finaleMentorAfkorting: string | undefined = undefined;
+        let finaleMentorAfkorting = '';
         let finaleMentorNaam = mentorNaam;
 
         if (mentorAfkorting) {
-          // Als de CSV expliciet een mentorAfkorting meegeeft, verifiëren we die
           const norm = normaliseerAfkorting(mentorAfkorting);
           const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
-          if (!docent) {
-            afgewezenOnbekendeAfkorting.push(`Rij ${i + 1} (${leerling}): onbekende mentorAfkorting "${mentorAfkorting}"`);
-            overgeslagen++;
-            continue;
-          }
-          if (!docent.actief) {
-            afgewezenOnbekendeAfkorting.push(`Rij ${i + 1} (${leerling}): mentor "${docent.naam}" (${toonAfkorting(norm)}) is inactief`);
-            overgeslagen++;
+          if (!docent || !docent.actief) {
+            afgewezenOnbekendeAfkorting.push(`Rij ${i+1}: ${mentorAfkorting}`);
             continue;
           }
           finaleMentorAfkorting = norm;
           finaleMentorNaam = docent.naam;
         } else if (bestaand?.mentorAfkorting) {
-          // Behoud eerder gekoppelde canonieke mentorafkorting
           finaleMentorAfkorting = bestaand.mentorAfkorting;
           finaleMentorNaam = bestaand.mentorNaam || mentorNaam;
+        } else if (mentorNaam) {
+          onbekendeMentoren.add(mentorNaam);
         }
 
-        if (!finaleMentorNaam && !finaleMentorAfkorting) zonderMentor++;
-        if (!mentorEmail) zonderMentorEmail++;
-
-        teSchrijven.push({
+        parsedData.push({
           id: bestaand?.id,
           data: {
-            leerlingnummer: leerlingnummer,
-            leerling: leerling,
-            klas: klas,
+            leerlingnummer,
+            leerling,
+            klas,
             mentorNaam: finaleMentorNaam,
-            mentorEmail: mentorEmail,
+            mentorEmail: mentorEmail || '',
             ...(finaleMentorAfkorting ? { mentorAfkorting: finaleMentorAfkorting } : {}),
-            schooljaar: schooljaar,
-            actief: actief
+            schooljaar,
+            actief
           }
         });
       }
 
-      if (teSchrijven.length === 0) {
-        alert(
-          afgewezenOnbekendeAfkorting.length > 0
-            ? `Geen bruikbare regels geïmporteerd. Geweigerde afkortingen:\n${afgewezenOnbekendeAfkorting.join('\n')}`
-            : 'Geen bruikbare regels gevonden. Er is per regel minimaal een leerlingnummer en een naam nodig.'
-        );
+      if (parsedData.length === 0) {
+        alert('Geen bruikbare regels gevonden.');
         input.value = '';
         return;
       }
 
-      const nieuw = teSchrijven.filter(t => !t.id).length;
-      const bijgewerkt = teSchrijven.length - nieuw;
-
-      this.bezig.set(true);
-      try {
-        await this.dataService.bulkSaveLeerlingen(teSchrijven);
-
-        const delen = [`${nieuw} nieuw`, `${bijgewerkt} bijgewerkt`];
-        if (overgeslagen) delen.push(`${overgeslagen} overgeslagen`);
-
-        let melding = 'Import klaar: ' + delen.join(', ') + '.';
-        if (afgewezenOnbekendeAfkorting.length > 0) {
-          melding += `\n\nLet op: ${afgewezenOnbekendeAfkorting.length} regels geweigerd wegens onbekende/inactieve mentorafkorting (eerste: ${afgewezenOnbekendeAfkorting[0]}).`;
-        }
-        if (zonderMentor) {
-          melding += `\n\nBij ${zonderMentor} leerlingen stond geen mentor in het bestand.`;
-        }
-        if (zonderMentorEmail === teSchrijven.length) {
-          melding += '\n\nHet bestand bevat geen e-mailadressen van mentoren.';
-        }
-        alert(melding);
-      } catch {
-        alert('Er ging iets mis bij het opslaan. Mogelijk is maar een deel van de lijst weggeschreven; probeer het opnieuw.');
-      } finally {
-        this.bezig.set(false);
+      if (onbekendeMentoren.size > 0) {
+        this.pendingImportData.set(parsedData);
+        this.importMappings.set(Array.from(onbekendeMentoren).map(naam => ({
+          bronNaam: naam,
+          gekozenAfkorting: ''
+        })));
+        this.showMappingModal.set(true);
+      } else {
+        this.pendingImportData.set(parsedData);
+        await this.processImport();
       }
-
+      
       input.value = '';
     };
     reader.readAsText(file);
   }
+
 
   downloadTemplate() {
     downloadCsv('leerlingen_template.csv', [
@@ -774,6 +879,7 @@ export class ManageStudentsComponent {
     } else {
       val.mentorAfkorting = '';
       val.mentorNaam = '';
+      val.mentorEmail = '';
     }
 
     const id = this.editingId();

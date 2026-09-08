@@ -322,6 +322,24 @@ describe('ManageStudentsComponent mentor-koppelingen', () => {
       expect(nieuw?.mentorNaam).toBe('Rumeysa Karaarslan');
     });
 
+        it('slaat nooit alleen een naam en e-mailadres op zonder geldige afkorting', () => {
+      component.openForm();
+      component.form.patchValue({
+        leerlingnummer: '1100',
+        leerling: 'Test Leerling',
+        klas: '1A',
+        mentorAfkorting: '',
+      });
+      // Component doesn't allow form editing of mentorNaam/mentorEmail directly,
+      // but let's simulate form having no afkorting.
+      component.onSubmit();
+      const nieuw = data.leerlingen().find(l => l.leerlingnummer === '1100');
+      expect(nieuw).toBeDefined();
+      expect(nieuw?.mentorAfkorting).toBeFalsy();
+      expect(nieuw?.mentorNaam).toBeFalsy();
+      expect(nieuw?.mentorEmail).toBeFalsy();
+    });
+
     it('weigert onbekende afkorting bij handmatig opslaan', () => {
       const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
       component.openForm();

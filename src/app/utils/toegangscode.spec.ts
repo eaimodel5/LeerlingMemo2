@@ -172,7 +172,7 @@ describe('wat er wordt weggeschreven bij intrekken en activeren', () => {
   });
 
   it('laat een gewone actieve code werken zoals hij deed', () => {
-    const gewoon = code({ active: true, used: false });
+    const gewoon = code({ active: true, used: false, docentAfkorting: 'vis' });
     expect(isActieveCode(gewoon)).toBe(true);
     expect(isActieveCode({ ...gewoon, ...veldenVoorActiveren() })).toBe(true);
   });
@@ -200,11 +200,11 @@ describe('de eigen code intrekken', () => {
 
 describe('moet de sessie stoppen op grond van het eigen codedocument', () => {
   it('nee bij een actieve code', () => {
-    expect(sessieMoetStoppen(true, { active: true, used: false })).toBe(false);
+    expect(sessieMoetStoppen(true, { active: true, used: false, docentAfkorting: 'vis' })).toBe(false);
   });
 
   it('nee bij een code zonder het veld active', () => {
-    expect(sessieMoetStoppen(true, {})).toBe(false);
+    expect(sessieMoetStoppen(true, { docentAfkorting: 'vis' })).toBe(false);
   });
 
   it('ja bij een ingetrokken code', () => {
@@ -232,9 +232,9 @@ describe('codeVereistDocentIdentiteit', () => {
     expect(codeVereistDocentIdentiteit({ role: 'Docent', used: true })).toBe(false);
   });
 
-  it('superuser en coordinator vereisen geen persoonlijke docentidentiteit', () => {
-    expect(codeVereistDocentIdentiteit({ role: 'Superuser', active: true })).toBe(false);
-    expect(codeVereistDocentIdentiteit({ role: 'Coordinator', active: true })).toBe(false);
+  it('superuser en coordinator vereisen nu ook persoonlijke docentidentiteit (PR8)', () => {
+    expect(codeVereistDocentIdentiteit({ role: 'Superuser', active: true })).toBe(true);
+    expect(codeVereistDocentIdentiteit({ role: 'Coordinator', active: true })).toBe(true);
   });
 });
 

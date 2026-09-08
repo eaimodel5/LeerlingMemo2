@@ -330,3 +330,11 @@ Wijzigingen gelden pas als ze gepubliceerd zijn.
 ```bash
 npx firebase login
 npm run deploy:rules
+
+## PR8 naar PR9 migratie
+De applicatie bevindt zich in PR8 ("De Migratie"). De gegevens worden omgezet naar een canoniek docentenmodel waarbij de `docentAfkorting` de vaste identiteit is.
+
+- Alle actieve personeelsrollen (Docent, Mentor, Coordinator, Superuser) vereisen nu een geldige `docentAfkorting`.
+- E-mailadressen (`ownerEmail`, `docentEmail`, `mentorEmail`) zijn legacy en worden behouden, maar mogen nooit meer gebruikt worden om een nieuwe docentidentiteit te creëren.
+- Bij het importeren van leerlingen (Magister export) is er een expliciete mappingstap toegevoegd om niet-canonieke mentorwaarden (`mentorNaam`) eenmalig en handmatig te koppelen aan een actieve docentafkorting. Er wordt nooit meer zomaar een mentornaam of e-mailadres weggeschreven zonder gekoppelde `mentorAfkorting`.
+- PR8-Readiness Gate: Een controlescherm (Superuser -> Codes Beheren) controleert 7 datadomeinen. De applicatie is pas "Gereed voor PR9" nadat alle data over het netwerk is binnengehaald én 100% van de actieve records is gekoppeld aan canonieke afkortingen.

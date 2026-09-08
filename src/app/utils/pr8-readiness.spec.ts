@@ -57,6 +57,7 @@ function schoneInvoer(): MutablePR8Invoer {
         role: 'Superuser',
         ownerName: 'Admin',
         ownerEmail: 'admin@school.nl',
+        docentAfkorting: 'bak',
         active: true,
       } as AccessCode,
     ],
@@ -88,6 +89,7 @@ describe('PR8 Readiness Gate', () => {
   it('geeft gereed: true wanneer alle 7 onderdelen correct zijn gemigreerd', () => {
     const invoer = schoneInvoer();
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
 
     expect(rapport.gereed).toBe(true);
     expect(rapport.totaalProblemen).toBe(0);
@@ -99,6 +101,7 @@ describe('PR8 Readiness Gate', () => {
     invoer.docenten.push({ afkorting: 'VIS', naam: 'Hans Visser Duplicaat', actief: true });
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(false);
     expect(rapport.onderdelen['dubbele-docenten'].problemen).toBe(1);
     expect(rapport.onderdelen['dubbele-docenten'].herstelRoute).toBe('/manage-docenten');
@@ -121,6 +124,7 @@ describe('PR8 Readiness Gate', () => {
     });
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(false);
     expect(rapport.onderdelen['docent-vakken'].problemen).toBe(2);
     expect(rapport.onderdelen['docent-vakken'].probleemItems[0].soort).toBe('ontbreekt');
@@ -139,6 +143,7 @@ describe('PR8 Readiness Gate', () => {
     });
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(false);
     expect(rapport.onderdelen['docent-taken'].problemen).toBe(1);
     expect(rapport.onderdelen['docent-taken'].herstelRoute).toBe('/manage-docenten');
@@ -154,6 +159,7 @@ describe('PR8 Readiness Gate', () => {
     });
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(false);
     expect(rapport.onderdelen['memo-tw1tw2'].problemen).toBe(1);
     expect(rapport.onderdelen['memo-tw1tw2'].herstelRoute).toBe('/manage-docenten');
@@ -170,6 +176,7 @@ describe('PR8 Readiness Gate', () => {
     });
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(false);
     expect(rapport.onderdelen['memo-tw3'].problemen).toBe(1);
     expect(rapport.onderdelen['memo-tw3'].herstelRoute).toBe('/manage-docenten');
@@ -187,6 +194,7 @@ describe('PR8 Readiness Gate', () => {
     } as AccessCode);
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(false);
     expect(rapport.onderdelen['toegangscodes'].problemen).toBe(1);
     expect(rapport.onderdelen['toegangscodes'].probleemItems[0].soort).toBe('ontbreekt');
@@ -207,6 +215,7 @@ describe('PR8 Readiness Gate', () => {
     } as Leerling);
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(false);
     expect(rapport.onderdelen['leerling-mentoren'].problemen).toBe(1);
     expect(rapport.onderdelen['leerling-mentoren'].probleemItems[0].soort).toBe('ontbreekt');
@@ -226,6 +235,7 @@ describe('PR8 Readiness Gate', () => {
     } as Leerling);
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(false);
     expect(rapport.onderdelen['leerling-mentoren'].problemen).toBe(1);
     expect(rapport.onderdelen['leerling-mentoren'].probleemItems[0].soort).toBe('onbekend');
@@ -252,6 +262,7 @@ describe('PR8 Readiness Gate', () => {
     } as Leerling);
 
     const rapport = controleerPR8Readiness(invoer);
+    if (!rapport.gereed) console.log(JSON.stringify(rapport.alleProblemen, null, 2));
     expect(rapport.gereed).toBe(true);
     expect(rapport.totaalProblemen).toBe(0);
   });

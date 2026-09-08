@@ -8,6 +8,7 @@
 export type InlogFout =
   | 'onbekende-code'
   | 'code-ingetrokken'
+  | 'code-incompleet'
   | 'anoniem-inloggen-uit'
   | 'geen-verbinding'
   | 'geen-rechten'
@@ -16,6 +17,7 @@ export type InlogFout =
 export const INLOG_MELDINGEN: Record<InlogFout, string> = {
   'onbekende-code': 'Deze toegangscode bestaat niet. Controleer of je hem precies hebt overgenomen.',
   'code-ingetrokken': 'Deze toegangscode is ingetrokken. Vraag de beheerder om een nieuwe.',
+  'code-incompleet': 'Deze toegangscode mist een vereiste docentkoppeling (PR9).',
   'anoniem-inloggen-uit':
     'De app mag zich niet bij Firebase aanmelden. Zet in de Firebase-console onder Authentication → Sign-in method de methode "Anonymous" aan.',
   'geen-verbinding':

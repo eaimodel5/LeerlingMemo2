@@ -32,6 +32,7 @@ import { controleerPR8Readiness, PR8ReadinessRapport } from '../utils/pr8-readin
 
 @Component({
   selector: 'app-superuser',
+  standalone: true,
   imports: [CommonModule, MatIconModule],
   template: `
     <div class="flex flex-col h-full bg-slate-50">
@@ -156,14 +157,22 @@ import { controleerPR8Readiness, PR8ReadinessRapport } from '../utils/pr8-readin
                 <div>
                   <div class="flex items-center gap-2">
                     <h3 class="text-base font-bold text-slate-900">PR8-Readiness & Migratiestatus</h3>
-                    <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide"
-                          [class.bg-emerald-100]="pr8Rapport().gereed" [class.text-emerald-800]="pr8Rapport().gereed"
-                          [class.bg-amber-100]="!pr8Rapport().gereed" [class.text-amber-800]="!pr8Rapport().gereed">
-                      {{ pr8Rapport().gereed ? 'Gereed voor PR9' : pr8Rapport().totaalProblemen + ' blokkade(s)' }}
-                    </span>
+                    @if (!isAllesGeladen()) {
+                      <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide bg-blue-100 text-blue-800">
+                        Gegevens laden...
+                      </span>
+                    } @else {
+                      <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide"
+                            [class.bg-emerald-100]="pr8Rapport().gereed" [class.text-emerald-800]="pr8Rapport().gereed"
+                            [class.bg-amber-100]="!pr8Rapport().gereed" [class.text-amber-800]="!pr8Rapport().gereed">
+                        {{ pr8Rapport().gereed ? 'Gereed voor PR9' : pr8Rapport().totaalProblemen + ' blokkade(s)' }}
+                      </span>
+                    }
                   </div>
                   <p class="text-xs text-slate-600 mt-1 max-w-2xl">
-                    @if (pr8Rapport().gereed) {
+                    @if (!isAllesGeladen()) {
+                      De gegevens worden gecontroleerd. Een moment geduld.
+                    } @else if (pr8Rapport().gereed) {
                       Alle 7 domeinen zijn 100% gekoppeld aan canonieke docenten. De data is klaar voor de definitieve PR9-cutover.
                     } @else {
                       Er zijn {{ pr8Rapport().totaalProblemen }} records zonder geldige canonieke docentafkorting. Los deze op via de onderstaande herstelroutes vóór de PR9-cutover.
@@ -818,6 +827,8 @@ export class SuperuserComponent implements OnDestroy {
   }
 
   codes = signal<AccessCode[]>([]);
+  codesGeladen = signal(false);
+  isAllesGeladen = computed(() => this.dataService.allesGeladen() && this.codesGeladen());
   searchQuery = signal('');
   selectedRoleFilter = signal<string>('ALLE');
   showCreate = signal(false);
@@ -914,12 +925,11 @@ export class SuperuserComponent implements OnDestroy {
     try {
       await setDoc(doc(db, 'codes', code.id), {
         docentAfkorting: norm,
-        ownerName: docent.naam,
       }, { merge: true });
 
       // Lokale signal bijwerken zodat de tabel en banners meteen reageren
       this.codes.update(huidig =>
-        huidig.map(c => c.id === code.id ? { ...c, docentAfkorting: norm, ownerName: docent.naam } : c)
+        huidig.map(c => c.id === code.id ? { ...c, docentAfkorting: norm } : c)
       );
 
       this.melding.set({
@@ -1248,6 +1258,7 @@ export class SuperuserComponent implements OnDestroy {
       query(collection(db, 'codes'), orderBy('createdAt', 'desc')),
       (snapshot) => {
         this.codes.set(snapshot.docs.map(d => ({ ...d.data(), id: d.id } as AccessCode)));
+        this.codesGeladen.set(true);
       },
       (error) => console.error('Luisteraar op codes gaf een fout:', error),
     );

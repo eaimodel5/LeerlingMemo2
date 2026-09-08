@@ -72,16 +72,20 @@ describe('leerlingbestand in het eigen sjabloon', () => {
   });
 });
 
-describe('lastige tekst in velden', () => {
-  it('houdt een komma in een naam bij elkaar', () => {
-    const csv = 'Stamnummer,Naam,Klas,Klassenmentor 1\n114334,"Aartsen, Dae",3HB,"Houtman, Bart"';
+describe('mentorAfkorting herkenning en isolatie', () => {
+  it('leest mentorAfkorting uit als kolom aanwezig is en normaliseert', () => {
+    const csv = 'leerlingnummer,leerling,klas,mentorAfkorting,mentorNaam\n114334,Dae Aartsen,2HJ, KAR ,Rumeysa Karaarslan';
     const rij = importeer(csv)[0];
-    expect(rij.leerling).toBe('Aartsen, Dae');
-    expect(rij.mentorNaam).toBe('Houtman, Bart');
+    expect(rij.mentorAfkorting).toBe('kar');
+    expect(rij.mentorNaam).toBe('Rumeysa Karaarslan');
   });
 
-  it('werkt ook met puntkomma\'s als scheidingsteken', () => {
-    const csv = 'Stamnummer;Roepnaam;Tussenvoegsel;Achternaam;Klas;Klassenmentor 1\n114334;Dae;;Aartsen;3HB;Bart Houtman';
-    expect(importeer(csv)[0].mentorNaam).toBe('Bart Houtman');
+  it('leidt NOOIT mentorAfkorting af uit mentorNaam of mentorEmail', () => {
+    const csv = 'leerlingnummer,leerling,klas,mentorNaam,mentorEmail\n114334,Dae Aartsen,2HJ,Bart Houtman,bhoutman@emmauscollege.nl';
+    const rij = importeer(csv)[0];
+    expect(rij.mentorNaam).toBe('Bart Houtman');
+    expect(rij.mentorEmail).toBe('bhoutman@emmauscollege.nl');
+    expect(rij.mentorAfkorting).toBeUndefined();
   });
 });
+

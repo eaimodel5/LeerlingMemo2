@@ -348,4 +348,163 @@ describe('SuperuserComponent toegangscodes', () => {
       ).toBeNull();
     },
   );
+
+  describe('Legacy toegangscodes herstelroute', () => {
+    it('detecteert actieve docent/mentor codes zonder afkorting of met onbekende afkorting', () => {
+      data.docenten.set([
+        { afkorting: 'vis', naam: 'Hans Visser', actief: true },
+        { afkorting: 'bak', naam: 'Els Bakker', actief: true },
+      ]);
+
+      const legacyDocentCode: AccessCode = {
+        id: 'DOC-01',
+        code: 'DOC-01',
+        role: 'Docent',
+        ownerName: 'Oude Docent',
+        ownerEmail: 'doc@school.nl',
+        createdAt: '2026-09-01T00:00:00Z',
+        active: true,
+        used: false,
+      };
+
+      const onbekendeMentorCode: AccessCode = {
+        id: 'MEN-01',
+        code: 'MEN-01',
+        role: 'Mentor',
+        ownerName: 'Onbekende Mentor',
+        ownerEmail: 'men@school.nl',
+        docentAfkorting: 'onb',
+        createdAt: '2026-09-01T00:00:00Z',
+        active: true,
+        used: false,
+      };
+
+      const geldigeCode: AccessCode = {
+        id: 'DOC-02',
+        code: 'DOC-02',
+        role: 'Docent',
+        ownerName: 'Hans Visser',
+        ownerEmail: 'vis@school.nl',
+        docentAfkorting: 'vis',
+        createdAt: '2026-09-01T00:00:00Z',
+        active: true,
+        used: false,
+      };
+
+      component.codes.set([legacyDocentCode, onbekendeMentorCode, geldigeCode]);
+
+      const rapport = component.migratieStatus();
+      expect(rapport.problemen).toBe(2);
+      expect(rapport.zonderAfkorting).toBe(1);
+      expect(rapport.onbekendeAfkorting).toBe(1);
+      expect(rapport.probleemGevallen.length).toBe(2);
+
+      // Filteren op te herstellen codes
+      component.alleenHerstelNodig.set(true);
+      const gefilterd = component.filteredCodes();
+      expect(gefilterd.length).toBe(2);
+      expect(gefilterd.map(c => c.id)).toEqual(['DOC-01', 'MEN-01']);
+    });
+
+    it('koppelt een legacy code succesvol aan een expliciet gekozen docent via saveRepairedCode', async () => {
+      data.docenten.set([
+        { afkorting: 'bak', naam: 'Els Bakker', actief: true },
+      ]);
+
+      const legacyCode: AccessCode = {
+        id: 'DOC-LEGACY',
+        code: 'DOC-LEGACY',
+        role: 'Docent',
+        ownerName: 'Oude Onbekende Naam',
+        ownerEmail: 'onbekend@school.nl',
+        createdAt: '2026-09-01T00:00:00Z',
+        active: true,
+        used: false,
+      };
+
+      component.codes.set([legacyCode]);
+
+      // Open repair modal
+      component.openRepairModal(legacyCode);
+      expect(component.repairCode()).toBe(legacyCode);
+
+      // Selecteer canonieke docent 'bak'
+      component.repairDocentAfkorting.set('BAK');
+
+      await component.saveRepairedCode();
+
+      expect(vi.mocked(setDoc)).toHaveBeenCalledTimes(1);
+      const call = vi.mocked(setDoc).mock.calls[0];
+      expect(call[1]).toEqual({
+        docentAfkorting: 'bak',
+        ownerName: 'Els Bakker',
+      });
+
+      // Modal gesloten en melding gegeven
+      expect(component.repairCode()).toBeNull();
+      expect(component.melding()?.soort).toBe('ok');
+      expect(component.melding()?.tekst).toContain('succesvol gekoppeld aan docent Els Bakker (BAK)');
+
+      // Lokale code is gemuteerd
+      const bijgewerkt = component.codes().find(c => c.id === 'DOC-LEGACY');
+      expect(bijgewerkt?.docentAfkorting).toBe('bak');
+      expect(bijgewerkt?.ownerName).toBe('Els Bakker');
+      expect(component.migratieStatus().problemen).toBe(0);
+    });
+
+    it('weigert koppeling bij ongeldige of onbekende afkorting', async () => {
+      data.docenten.set([
+        { afkorting: 'bak', naam: 'Els Bakker', actief: true },
+      ]);
+
+      const legacyCode: AccessCode = {
+        id: 'DOC-LEGACY',
+        code: 'DOC-LEGACY',
+        role: 'Docent',
+        ownerName: 'Oude Naam',
+        ownerEmail: 'onbekend@school.nl',
+        createdAt: '2026-09-01T00:00:00Z',
+        active: true,
+        used: false,
+      };
+
+      component.codes.set([legacyCode]);
+      component.openRepairModal(legacyCode);
+
+      // Onbekende afkorting
+      component.repairDocentAfkorting.set('xyz');
+      await component.saveRepairedCode();
+
+      expect(vi.mocked(setDoc)).not.toHaveBeenCalled();
+      expect(component.melding()?.soort).toBe('fout');
+      expect(component.melding()?.tekst).toContain('niet gevonden');
+    });
+
+    it('weigert koppeling aan een inactieve docent', async () => {
+      data.docenten.set([
+        { afkorting: 'ina', naam: 'Inactieve Docent', actief: false },
+      ]);
+
+      const legacyCode: AccessCode = {
+        id: 'DOC-LEGACY',
+        code: 'DOC-LEGACY',
+        role: 'Docent',
+        ownerName: 'Oude Naam',
+        ownerEmail: 'onbekend@school.nl',
+        createdAt: '2026-09-01T00:00:00Z',
+        active: true,
+        used: false,
+      };
+
+      component.codes.set([legacyCode]);
+      component.openRepairModal(legacyCode);
+
+      component.repairDocentAfkorting.set('ina');
+      await component.saveRepairedCode();
+
+      expect(vi.mocked(setDoc)).not.toHaveBeenCalled();
+      expect(component.melding()?.soort).toBe('fout');
+      expect(component.melding()?.tekst).toContain('is inactief');
+    });
+  });
 });

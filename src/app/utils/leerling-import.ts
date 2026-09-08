@@ -8,12 +8,15 @@
  * daar "Klassenmentor 1".
  */
 
+import { normaliseerAfkorting } from './docent-afkorting';
+
 export interface LeerlingRij {
   leerlingnummer: string;
   leerling: string;
   klas: string;
   mentorNaam: string;
   mentorEmail: string;
+  mentorAfkorting?: string;
   actief: boolean;
 }
 
@@ -53,8 +56,19 @@ export function leesLeerlingRij(obj: Record<string, string>): LeerlingRij {
 
   const mentorEmail = obj['mentoremail'] || obj['mentore-mail'] || obj['emailmentor'] || '';
 
+  const mentorAfkRauw = obj['mentorafkorting'] || obj['mentorcode'] || obj['afkortingmentor'] || obj['mentorafk'] || '';
+  const mentorAfkorting = mentorAfkRauw.trim() ? normaliseerAfkorting(mentorAfkRauw) : undefined;
+
   // Alles is actief, tenzij het bestand expliciet anders zegt.
   const actief = obj['actief'] !== 'false' && obj['actief'] !== '0' && obj['actief'] !== 'nee';
 
-  return { leerlingnummer, leerling, klas, mentorNaam, mentorEmail, actief };
+  return {
+    leerlingnummer,
+    leerling,
+    klas,
+    mentorNaam,
+    mentorEmail,
+    ...(mentorAfkorting ? { mentorAfkorting } : {}),
+    actief,
+  };
 }

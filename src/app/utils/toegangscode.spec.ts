@@ -12,6 +12,8 @@ import {
   magActiveren,
   magIntrekken,
   uitlegBijBezwaar,
+  codeVereistDocentIdentiteit,
+  analyseerAccessCodeMigratie,
 } from './toegangscode';
 
 function code(over: Partial<AccessCode> = {}): AccessCode {
@@ -217,3 +219,112 @@ describe('moet de sessie stoppen op grond van het eigen codedocument', () => {
     expect(sessieMoetStoppen(false)).toBe(true);
   });
 });
+
+describe('codeVereistDocentIdentiteit', () => {
+  it('actieve docent- en mentorcodes vereisen een docentidentiteit', () => {
+    expect(codeVereistDocentIdentiteit({ role: 'Docent', active: true })).toBe(true);
+    expect(codeVereistDocentIdentiteit({ role: 'Mentor', active: true })).toBe(true);
+  });
+
+  it('inactieve of ingetrokken codes vereisen geen docentidentiteit', () => {
+    expect(codeVereistDocentIdentiteit({ role: 'Docent', active: false })).toBe(false);
+    expect(codeVereistDocentIdentiteit({ role: 'Mentor', active: false })).toBe(false);
+    expect(codeVereistDocentIdentiteit({ role: 'Docent', used: true })).toBe(false);
+  });
+
+  it('superuser en coordinator vereisen geen persoonlijke docentidentiteit', () => {
+    expect(codeVereistDocentIdentiteit({ role: 'Superuser', active: true })).toBe(false);
+    expect(codeVereistDocentIdentiteit({ role: 'Coordinator', active: true })).toBe(false);
+  });
+});
+
+describe('analyseerAccessCodeMigratie', () => {
+  const docenten = [
+    { afkorting: 'vis', naam: 'Hans Visser', actief: true },
+    { afkorting: 'kar', naam: 'Rumeysa Karaarslan', actief: true },
+  ];
+
+  it('markeert actieve docentcode zonder docentAfkorting als ontbreekt', () => {
+    const codes: AccessCode[] = [
+      {
+        id: 'c1',
+        code: 'DOC-1111',
+        ownerName: 'Hans Visser',
+        ownerEmail: 'hvisser@school.nl',
+        role: 'Docent',
+        active: true,
+        createdAt: '2026-09-01T00:00:00Z',
+      },
+    ];
+    const status = analyseerAccessCodeMigratie(codes, docenten);
+    expect(status.problemen).toBe(1);
+    expect(status.zonderAfkorting).toBe(1);
+    expect(status.probleemGevallen[0].soort).toBe('ontbreekt');
+  });
+
+  it('markeert code met onbekende docentAfkorting als onbekend', () => {
+    const codes: AccessCode[] = [
+      {
+        id: 'c2',
+        code: 'DOC-2222',
+        ownerName: 'Iemand Anders',
+        ownerEmail: 'onbekend@school.nl',
+        role: 'Docent',
+        docentAfkorting: 'xyz',
+        active: true,
+        createdAt: '2026-09-01T00:00:00Z',
+      },
+    ];
+    const status = analyseerAccessCodeMigratie(codes, docenten);
+    expect(status.problemen).toBe(1);
+    expect(status.onbekendeAfkorting).toBe(1);
+    expect(status.probleemGevallen[0].soort).toBe('onbekend');
+  });
+
+  it('geeft 0 problemen bij correct gemigreerde codes', () => {
+    const codes: AccessCode[] = [
+      {
+        id: 'c3',
+        code: 'DOC-3333',
+        ownerName: 'Hans Visser',
+        ownerEmail: 'hvisser@school.nl',
+        role: 'Docent',
+        docentAfkorting: 'VIS',
+        active: true,
+        createdAt: '2026-09-01T00:00:00Z',
+      },
+      {
+        id: 'c4',
+        code: 'MEN-4444',
+        ownerName: 'Rumeysa Karaarslan',
+        ownerEmail: 'rkar@school.nl',
+        role: 'Mentor',
+        docentAfkorting: 'kar',
+        active: true,
+        createdAt: '2026-09-01T00:00:00Z',
+      },
+    ];
+    const status = analyseerAccessCodeMigratie(codes, docenten);
+    expect(status.problemen).toBe(0);
+    expect(status.metAfkorting).toBe(2);
+  });
+
+  it('negeert inactieve codes zonder docentAfkorting en koppelt nooit op naam of e-mail', () => {
+    const codes: AccessCode[] = [
+      {
+        id: 'c5',
+        code: 'OLD-5555',
+        ownerName: 'Hans Visser', // zelfde naam als bekende docent!
+        ownerEmail: 'hvisser@school.nl', // zelfde mail als bekende docent!
+        role: 'Docent',
+        active: false, // inactief
+        createdAt: '2026-09-01T00:00:00Z',
+      },
+    ];
+    const status = analyseerAccessCodeMigratie(codes, docenten);
+    // Inactieve code zonder afkorting telt niet mee als blokkerend probleem
+    expect(status.problemen).toBe(0);
+    expect(status.totaal).toBe(0);
+  });
+});
+

@@ -1,4 +1,5 @@
 import { AccessCode, UserRole } from '../models/data.models';
+import { normaliseerAfkorting } from './docent-afkorting';
 
 /**
  * Wanneer een toegangscode geldig is, en wanneer je hem mag intrekken.
@@ -161,6 +162,7 @@ export interface AccessCodeMigratieProbleem {
   role: UserRole;
   soort: 'ontbreekt' | 'onbekend';
   docentAfkorting?: string;
+  actief: boolean;
 }
 
 export interface AccessCodeMigratieStatus {
@@ -173,30 +175,53 @@ export interface AccessCodeMigratieStatus {
 }
 
 /**
+ * Bepaalt of een toegangscode volgens de autorisatielogica een docentidentiteit (docentAfkorting) nodig heeft.
+ *
+ * - Actieve codes met rol 'Docent' hebben taken en schrijven memo's;
+ * - Actieve codes met rol 'Mentor' vertegenwoordigen de mentorrelatie met leerlingen;
+ * - Inactieve/ingetrokken codes kunnen niet inloggen en blijven geblokkeerd;
+ * - Superuser en Coordinator opereren schoolbreed en vereisen geen persoonlijke docentkoppeling,
+ *   tenzij er een docentAfkorting is ingevuld (die dan wel geldig moet zijn).
+ */
+export function codeVereistDocentIdentiteit(code: Pick<AccessCode, 'role' | 'active' | 'used'>): boolean {
+  if (!isActieveCode(code)) return false;
+  return code.role === 'Docent' || code.role === 'Mentor';
+}
+
+/**
  * Analyseert toegangscodes op de aanwezigheid en geldigheid van hun docentafkorting.
  *
- * Elke rol (Docent, Mentor, Coordinator, Superuser) behoort aan een personeelslid
- * (canonieke docent) gekoppeld te zijn. Codes zonder docentAfkorting of met een afkorting
- * die niet voorkomt in het docentenbestand zijn migratieproblemen.
+ * Actieve codes met rol Docent of Mentor hebben een docentafkorting nodig.
+ * Codes die al een docentafkorting hebben moeten overeenkomen met een bekende canonieke docent.
  */
 export function analyseerAccessCodeMigratie(
   codes: readonly AccessCode[],
   docenten: readonly { afkorting: string }[],
 ): AccessCodeMigratieStatus {
   const bekendeAfkortingen = new Set(
-    docenten.map(d => d.afkorting.trim().toLowerCase()).filter(Boolean),
+    docenten.map(d => normaliseerAfkorting(d.afkorting)).filter(Boolean),
   );
 
+  let totaalRelevant = 0;
   let metAfkorting = 0;
   let zonderAfkorting = 0;
   let onbekendeAfkorting = 0;
   const probleemGevallen: AccessCodeMigratieProbleem[] = [];
 
   for (const c of codes) {
-    const afk = c.docentAfkorting?.trim().toLowerCase();
+    const afk = c.docentAfkorting ? normaliseerAfkorting(c.docentAfkorting) : '';
     const codeId = c.id ?? c.code;
+    const vereist = codeVereistDocentIdentiteit(c);
+    const heeftAfk = Boolean(afk);
 
-    if (!afk) {
+    // Niet relevant voor migratie als er geen afkorting vereist is en er ook geen is ingevuld
+    if (!vereist && !heeftAfk) {
+      continue;
+    }
+
+    totaalRelevant++;
+
+    if (!heeftAfk) {
       zonderAfkorting++;
       probleemGevallen.push({
         codeId,
@@ -205,6 +230,7 @@ export function analyseerAccessCodeMigratie(
         ownerEmail: c.ownerEmail,
         role: c.role,
         soort: 'ontbreekt',
+        actief: isActieveCode(c),
       });
     } else if (!bekendeAfkortingen.has(afk)) {
       onbekendeAfkorting++;
@@ -216,6 +242,7 @@ export function analyseerAccessCodeMigratie(
         role: c.role,
         soort: 'onbekend',
         docentAfkorting: afk,
+        actief: isActieveCode(c),
       });
     } else {
       metAfkorting++;
@@ -223,7 +250,7 @@ export function analyseerAccessCodeMigratie(
   }
 
   return {
-    totaal: codes.length,
+    totaal: totaalRelevant,
     metAfkorting,
     zonderAfkorting,
     onbekendeAfkorting,

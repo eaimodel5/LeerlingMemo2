@@ -52,6 +52,8 @@ export interface Leerling {
   klas: string;
   mentorNaam: string;
   mentorEmail: string;
+  /** Genormaliseerde schoolafkorting van de mentor (/docenten/{afkorting}). */
+  mentorAfkorting?: string;
   schooljaar: string;
   actief: boolean;
 }

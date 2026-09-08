@@ -1,5 +1,6 @@
 import { Component, OnDestroy, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { AccessCode, Docent, UserRole } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
 import { parseCsv, downloadCsv } from '../utils/csv';
@@ -9,7 +10,9 @@ import { Melding } from '../utils/opslag';
 import {
   NIEUWE_CODE_ACTIEF,
   actieveCodesMetRol,
+  analyseerAccessCodeMigratie,
   bezwaarTegenIntrekken,
+  codeVereistDocentIdentiteit,
   isActieveCode,
   magActiveren,
   moetUitloggenNaIntrekken,
@@ -25,10 +28,10 @@ import {
 } from '../utils/docent-afkorting';
 import { AuthService } from '../services/auth.service';
 import { DataService } from '../services/data.service';
+import { controleerPR8Readiness, PR8ReadinessRapport } from '../utils/pr8-readiness';
 
 @Component({
   selector: 'app-superuser',
-  standalone: true,
   imports: [CommonModule, MatIconModule],
   template: `
     <div class="flex flex-col h-full bg-slate-50">
@@ -138,6 +141,173 @@ import { DataService } from '../services/data.service';
               </div>
             </div>
           </div>
+
+          <!-- Algemene PR8-Readiness Status (7 Gegevensdomeinen) -->
+          <div class="bg-white border rounded-2xl p-6 shadow-sm space-y-5"
+               [class.border-emerald-300]="pr8Rapport().gereed"
+               [class.border-amber-300]="!pr8Rapport().gereed">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <div class="p-2.5 rounded-xl shrink-0"
+                     [class.bg-emerald-100]="pr8Rapport().gereed" [class.text-emerald-700]="pr8Rapport().gereed"
+                     [class.bg-amber-100]="!pr8Rapport().gereed" [class.text-amber-800]="!pr8Rapport().gereed">
+                  <mat-icon class="text-2xl">{{ pr8Rapport().gereed ? 'verified' : 'fact_check' }}</mat-icon>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <h3 class="text-base font-bold text-slate-900">PR8-Readiness & Migratiestatus</h3>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide"
+                          [class.bg-emerald-100]="pr8Rapport().gereed" [class.text-emerald-800]="pr8Rapport().gereed"
+                          [class.bg-amber-100]="!pr8Rapport().gereed" [class.text-amber-800]="!pr8Rapport().gereed">
+                      {{ pr8Rapport().gereed ? 'Gereed voor PR9' : pr8Rapport().totaalProblemen + ' blokkade(s)' }}
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-600 mt-1 max-w-2xl">
+                    @if (pr8Rapport().gereed) {
+                      Alle 7 domeinen zijn 100% gekoppeld aan canonieke docenten. De data is klaar voor de definitieve PR9-cutover.
+                    } @else {
+                      Er zijn {{ pr8Rapport().totaalProblemen }} records zonder geldige canonieke docentafkorting. Los deze op via de onderstaande herstelroutes vóór de PR9-cutover.
+                    }
+                  </p>
+                </div>
+              </div>
+
+              @if (pr8Rapport().totaalProblemen > 0) {
+                <div class="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    (click)="toonAllePR8Blokkades.set(!toonAllePR8Blokkades())"
+                    class="px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer">
+                    <mat-icon class="text-[15px] w-[15px] h-[15px]">{{ toonAllePR8Blokkades() ? 'visibility_off' : 'list' }}</mat-icon>
+                    {{ toonAllePR8Blokkades() ? 'Verberg blokkades' : 'Toon details (' + pr8Rapport().totaalProblemen + ')' }}
+                  </button>
+                </div>
+              }
+            </div>
+
+            <!-- Overzicht van de 7 domeinen -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+              @for (onderdeel of pr8OnderdelenLijst(); track onderdeel.onderdeel) {
+                <div class="p-3.5 rounded-xl border flex flex-col justify-between transition-all"
+                     [class.bg-emerald-50/40]="onderdeel.problemen === 0"
+                     [class.border-emerald-200]="onderdeel.problemen === 0"
+                     [class.bg-amber-50/40]="onderdeel.problemen > 0"
+                     [class.border-amber-300]="onderdeel.problemen > 0">
+                  <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs font-bold text-slate-800">{{ onderdeel.titel }}</span>
+                      <mat-icon class="text-[16px] w-[16px] h-[16px]"
+                                [class.text-emerald-600]="onderdeel.problemen === 0"
+                                [class.text-amber-600]="onderdeel.problemen > 0">
+                        {{ onderdeel.problemen === 0 ? 'check_circle' : 'warning' }}
+                      </mat-icon>
+                    </div>
+                    <div class="text-[11px] text-slate-500">
+                      {{ onderdeel.inOrde }} van {{ onderdeel.totaal }} in orde
+                    </div>
+                  </div>
+
+                  <div class="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                    @if (onderdeel.problemen === 0) {
+                      <span class="text-[11px] font-semibold text-emerald-700">100% gereed</span>
+                    } @else {
+                      <span class="text-[11px] font-bold text-amber-800">{{ onderdeel.problemen }} open</span>
+                    }
+
+                    @if (onderdeel.onderdeel === 'toegangscodes') {
+                      <button
+                        (click)="alleenHerstelNodig.set(true)"
+                        class="text-[11px] font-bold text-[#e87700] hover:underline flex items-center gap-0.5 cursor-pointer">
+                        Filter
+                        <mat-icon class="text-[12px] w-[12px] h-[12px]">arrow_forward</mat-icon>
+                      </button>
+                    } @else {
+                      <button
+                        type="button"
+                        (click)="gaNaar(onderdeel.herstelRoute)"
+                        class="text-[11px] font-bold text-blue-700 hover:underline flex items-center gap-0.5 cursor-pointer">
+                        Herstel
+                        <mat-icon class="text-[12px] w-[12px] h-[12px]">arrow_forward</mat-icon>
+                      </button>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+
+            <!-- Details van alle blokkades (indien uitgeklapt) -->
+            @if (toonAllePR8Blokkades() && pr8Rapport().alleProblemen.length > 0) {
+              <div class="mt-4 pt-4 border-t border-slate-200 max-h-72 overflow-y-auto space-y-2">
+                <h4 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Overzicht openstaande blokkades</h4>
+                @for (probleem of pr8Rapport().alleProblemen; track probleem.id) {
+                  <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-3 text-xs">
+                    <div class="min-w-0">
+                      <span class="font-bold text-slate-800">{{ probleem.titel }}</span>
+                      <p class="text-slate-600 text-[11px]">{{ probleem.detail }}</p>
+                    </div>
+                    @if (probleem.onderdeel === 'toegangscodes') {
+                      <button
+                        (click)="alleenHerstelNodig.set(true)"
+                        class="px-2.5 py-1 text-xs font-semibold bg-amber-100 hover:bg-amber-200 text-amber-900 rounded shrink-0 transition-colors cursor-pointer">
+                        Toon code
+                      </button>
+                    } @else {
+                      <button
+                        type="button"
+                        (click)="gaNaar(probleem.herstelRoute)"
+                        class="px-2.5 py-1 text-xs font-semibold bg-blue-100 hover:bg-blue-200 text-blue-900 rounded shrink-0 transition-colors cursor-pointer">
+                        Naar herstel
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+
+          <!-- PR8-Readiness Migratiestatus Toegangscodes -->
+          @if (migratieStatus().probleemGevallen.length > 0) {
+            <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-start gap-3">
+                  <mat-icon class="text-amber-600 shrink-0 mt-0.5">warning</mat-icon>
+                  <div>
+                    <h4 class="font-bold text-amber-900 text-sm">
+                      {{ migratieStatus().probleemGevallen.length }}
+                      {{ migratieStatus().probleemGevallen.length === 1 ? 'toegangscode vereist' : 'toegangscodes vereisen' }}
+                      een canonieke docentkoppeling (PR8-readiness)
+                    </h4>
+                    <p class="text-xs text-amber-800 mt-1 max-w-2xl">
+                      {{ migratieStatus().zonderAfkorting }} actieve docent-/mentorcode(s) missen een docentafkorting en
+                      {{ migratieStatus().onbekendeAfkorting }} hebben een onbekende afkorting.
+                      Koppel elke code expliciet aan een canonieke docent uit de personeelslijst; er wordt nooit automatisch gekoppeld op naam of e-mail.
+                    </p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <button
+                    (click)="alleenHerstelNodig.set(!alleenHerstelNodig())"
+                    class="px-3 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                    [class.bg-amber-600]="alleenHerstelNodig()"
+                    [class.text-white]="alleenHerstelNodig()"
+                    [class.border-amber-600]="alleenHerstelNodig()"
+                    [class.bg-white]="!alleenHerstelNodig()"
+                    [class.text-amber-900]="!alleenHerstelNodig()"
+                    [class.border-amber-300]="!alleenHerstelNodig()">
+                    <mat-icon class="text-[15px] w-[15px] h-[15px]">{{ alleenHerstelNodig() ? 'filter_alt' : 'filter_alt_off' }}</mat-icon>
+                    {{ alleenHerstelNodig() ? 'Toon alle codes' : 'Toon alleen te herstellen codes' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          } @else if (migratieStatus().totaal > 0) {
+            <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+              <mat-icon class="text-emerald-600">check_circle</mat-icon>
+              <div class="text-xs text-emerald-800">
+                <span class="font-bold">Alle {{ migratieStatus().totaal }} relevante toegangscodes</span> zijn gekoppeld aan een bekende canonieke docentafkorting. Gereed voor PR8!
+              </div>
+            </div>
+          }
           
           <!-- Quick stats -->
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -256,12 +426,24 @@ import { DataService } from '../services/data.service';
                         <div class="flex items-center gap-2">
                           <span class="font-bold text-slate-800">{{ code.ownerName }}</span>
                           @if (code.docentAfkorting) {
-                            <span class="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200" title="Docentafkorting">
-                              {{ toon(code.docentAfkorting) }}
+                            @if (isAfkortingBekend(code.docentAfkorting)) {
+                              <span class="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200" title="Docentafkorting">
+                                {{ toon(code.docentAfkorting) }}
+                              </span>
+                            } @else {
+                              <span class="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 flex items-center gap-1" title="Onbekende docentafkorting: niet gevonden in docentenbestand">
+                                <mat-icon class="text-[12px] w-[12px] h-[12px]">error</mat-icon>
+                                {{ toon(code.docentAfkorting) }} (?)
+                              </span>
+                            }
+                          } @else if (vereistAfkorting(code)) {
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-0.5" title="Code van vóór PR 6 zonder gekoppelde canonieke docent">
+                              <mat-icon class="text-[11px] w-[11px] h-[11px]">warning</mat-icon>
+                              Afkorting ontbreekt
                             </span>
                           } @else {
-                            <span class="text-[10px] text-slate-400 italic" title="Code van vóór PR 6 zonder gekoppelde docent">
-                              Legacy
+                            <span class="text-[10px] text-slate-400 italic" title="Geen docentafkorting vereist voor deze rol">
+                              N.v.t.
                             </span>
                           }
                         </div>
@@ -283,6 +465,14 @@ import { DataService } from '../services/data.service';
                       </td>
                       <td class="px-6 py-4 text-right">
                         <div class="flex items-center justify-end gap-1">
+                          @if (vereistAfkorting(code) && (!code.docentAfkorting || !isAfkortingBekend(code.docentAfkorting))) {
+                            <button (click)="openRepairModal(code)"
+                                    class="px-2 py-1 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded transition-colors flex items-center gap-1 cursor-pointer"
+                                    title="Koppel expliciet aan een canonieke docent">
+                              <mat-icon class="text-[14px] w-[14px] h-[14px]">link</mat-icon>
+                              Koppelen
+                            </button>
+                          }
                           @if (kanActiveren(code)) {
                             <button (click)="zetCodeActief(code, true)" [disabled]="bezigMetCode() === code.id"
                                     class="px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded transition-colors disabled:opacity-50 cursor-pointer flex items-center gap-1"
@@ -531,12 +721,102 @@ import { DataService } from '../services/data.service';
         </div>
       }
 
+      <!-- Repair Modal voor Docent/Mentor Toegangscode Koppeling -->
+      @if (repairCode(); as c) {
+        <div class="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-in zoom-in-95 duration-200">
+            <div class="flex items-start gap-4 mb-4">
+              <div class="p-3 bg-amber-100 text-amber-700 rounded-full shrink-0">
+                <mat-icon class="text-2xl">link</mat-icon>
+              </div>
+              <div class="flex-1 min-w-0">
+                <h3 class="text-lg font-bold text-slate-900">Toegangscode koppelen aan docent</h3>
+                <p class="text-xs text-slate-600 mt-1">
+                  Koppel toegangscode <span class="font-mono font-bold text-slate-900">{{ c.code }}</span> ({{ c.role }}) expliciet aan een canonieke docent uit de personeelsadministratie.
+                </p>
+              </div>
+            </div>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-5 space-y-2 text-xs">
+              <div class="flex justify-between">
+                <span class="text-slate-500">Huidige weergavenaam:</span>
+                <span class="font-medium text-slate-800">{{ c.ownerName }}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">E-mailadres:</span>
+                <span class="font-medium text-slate-800">{{ c.ownerEmail }}</span>
+              </div>
+              @if (c.docentAfkorting) {
+                <div class="flex justify-between">
+                  <span class="text-slate-500">Huidige afkorting:</span>
+                  <span class="font-mono font-bold text-red-600">{{ c.docentAfkorting }} (onbekend in docentenlijst)</span>
+                </div>
+              } @else {
+                <div class="flex justify-between">
+                  <span class="text-slate-500">Huidige status:</span>
+                  <span class="font-medium text-amber-700">Geen afkorting gekoppeld (legacy code)</span>
+                </div>
+              }
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <label for="repair-docent-select" class="block text-xs font-bold text-slate-700 mb-1">
+                  Kies canonieke docent *
+                </label>
+                <select
+                  id="repair-docent-select"
+                  [value]="repairDocentAfkorting()"
+                  (change)="onRepairDocentChange($event)"
+                  class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm">
+                  <option value="">-- Selecteer een actieve docent --</option>
+                  @for (d of actieveDocenten(); track d.afkorting) {
+                    <option [value]="d.afkorting">{{ toon(d.afkorting) }} - {{ d.naam }}</option>
+                  }
+                </select>
+                <p class="text-[11px] text-slate-500 mt-1.5">
+                  Let op: kies bewust de juiste docent. Er wordt nooit automatisch gekoppeld op basis van naam of e-mailadres.
+                </p>
+              </div>
+            </div>
+
+            <div class="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+              <button
+                (click)="closeRepairModal()"
+                [disabled]="repairBezig()"
+                class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-300 transition-colors cursor-pointer">
+                Annuleren
+              </button>
+              <button
+                (click)="saveRepairedCode()"
+                [disabled]="!repairDocentAfkorting() || repairBezig()"
+                class="px-5 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50 cursor-pointer">
+                @if (repairBezig()) {
+                  <mat-icon class="animate-spin text-[16px]">refresh</mat-icon>
+                } @else {
+                  <mat-icon class="text-[16px]">check</mat-icon>
+                }
+                Opslaan & Koppelen
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
     </div>
   `
 })
 export class SuperuserComponent implements OnDestroy {
   auth = inject(AuthService);
   dataService = inject(DataService);
+  private router = inject(Router, { optional: true });
+
+  gaNaar(route: string) {
+    if (this.router) {
+      this.router.navigateByUrl(route);
+    }
+  }
+
   codes = signal<AccessCode[]>([]);
   searchQuery = signal('');
   selectedRoleFilter = signal<string>('ALLE');
@@ -552,6 +832,108 @@ export class SuperuserComponent implements OnDestroy {
   );
 
   superuserCodes = computed(() => this.codes().filter(c => c.role === 'Superuser'));
+
+  /** Migratiestatus van alle actieve Docent/Mentor codes voor PR8-readiness */
+  migratieStatus = computed(() =>
+    analyseerAccessCodeMigratie(this.codes(), this.docenten())
+  );
+
+  /** Gezamenlijke PR8-Readiness over alle 7 domeinen */
+  pr8Rapport = computed<PR8ReadinessRapport>(() =>
+    controleerPR8Readiness({
+      docenten: this.docenten(),
+      docentVakken: this.dataService.docentVakken(),
+      docentTaken: this.dataService.docentTaken(),
+      memoTW1TW2: this.dataService.memoTW1TW2(),
+      memoTW3: this.dataService.memoTW3(),
+      toegangscodes: this.codes(),
+      leerlingen: this.dataService.leerlingen(),
+    })
+  );
+
+  pr8OnderdelenLijst = computed(() => Object.values(this.pr8Rapport().onderdelen));
+
+  toonAllePR8Blokkades = signal(false);
+
+  alleenHerstelNodig = signal(false);
+
+  repairCode = signal<AccessCode | null>(null);
+  repairDocentAfkorting = signal<string>('');
+  repairBezig = signal<boolean>(false);
+
+  vereistAfkorting(code: AccessCode): boolean {
+    return codeVereistDocentIdentiteit(code);
+  }
+
+  isAfkortingBekend(afkorting?: string | null): boolean {
+    if (!afkorting) return false;
+    const norm = normaliseerAfkorting(afkorting);
+    return this.docenten().some(d => normaliseerAfkorting(d.afkorting) === norm);
+  }
+
+  openRepairModal(code: AccessCode) {
+    this.repairCode.set(code);
+    const bestaand = code.docentAfkorting && afkortingIsGeldig(code.docentAfkorting)
+      ? normaliseerAfkorting(code.docentAfkorting)
+      : '';
+    this.repairDocentAfkorting.set(bestaand);
+  }
+
+  closeRepairModal() {
+    this.repairCode.set(null);
+    this.repairDocentAfkorting.set('');
+  }
+
+  onRepairDocentChange(event: Event) {
+    this.repairDocentAfkorting.set((event.target as HTMLSelectElement).value);
+  }
+
+  async saveRepairedCode() {
+    const code = this.repairCode();
+    if (!code || !code.id) return;
+
+    const rawAfk = this.repairDocentAfkorting().trim();
+    if (!rawAfk || !afkortingIsGeldig(rawAfk)) {
+      this.melding.set({ soort: 'fout', tekst: 'Kies een geldige docentafkorting.' });
+      return;
+    }
+
+    const norm = normaliseerAfkorting(rawAfk);
+    const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+    if (!docent) {
+      this.melding.set({ soort: 'fout', tekst: `Docent met afkorting "${norm}" niet gevonden in het docentenbestand.` });
+      return;
+    }
+
+    if (!docent.actief) {
+      this.melding.set({ soort: 'fout', tekst: `Docent "${docent.naam}" (${toonAfkorting(norm)}) is inactief.` });
+      return;
+    }
+
+    this.repairBezig.set(true);
+    try {
+      await setDoc(doc(db, 'codes', code.id), {
+        docentAfkorting: norm,
+        ownerName: docent.naam,
+      }, { merge: true });
+
+      // Lokale signal bijwerken zodat de tabel en banners meteen reageren
+      this.codes.update(huidig =>
+        huidig.map(c => c.id === code.id ? { ...c, docentAfkorting: norm, ownerName: docent.naam } : c)
+      );
+
+      this.melding.set({
+        soort: 'ok',
+        tekst: `Toegangscode ${code.code} (${code.role}) succesvol gekoppeld aan docent ${docent.naam} (${toonAfkorting(norm)}).`,
+      });
+      this.closeRepairModal();
+    } catch (e: any) {
+      console.error('Herstellen toegangscode mislukt:', e);
+      this.melding.set({ soort: 'fout', tekst: 'Fout bij herstellen van toegangscode: ' + (e.message || String(e)) });
+    } finally {
+      this.repairBezig.set(false);
+    }
+  }
 
   /** Actieve beheerderscodes. Een ingetrokken code telt niet als vangnet. */
   actieveBeheerders = computed(() => actieveCodesMetRol(this.codes(), 'Superuser'));
@@ -823,8 +1205,12 @@ export class SuperuserComponent implements OnDestroy {
   filteredCodes = computed(() => {
     const q = this.searchQuery().toLowerCase().trim();
     const roleFilter = this.selectedRoleFilter();
+    const alleenHerstel = this.alleenHerstelNodig();
+    const probleemCodeIds = new Set(this.migratieStatus().probleemGevallen.map(p => p.codeId));
+
     return this.codes()
       .filter(c => {
+        if (alleenHerstel && (!c.id || !probleemCodeIds.has(c.id))) return false;
         if (roleFilter !== 'ALLE' && c.role !== roleFilter) return false;
         return (
           !q ||

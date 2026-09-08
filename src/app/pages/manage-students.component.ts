@@ -2,11 +2,17 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { DataService } from '../services/data.service';
 import { AuthService } from '../services/auth.service';
-import { Leerling } from '../models/data.models';
+import { Docent, Leerling } from '../models/data.models';
 import { MatIconModule } from '@angular/material/icon';
 import { FormsModule } from '@angular/forms';
 import { parseCsv, downloadCsv } from '../utils/csv';
 import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leerling-import';
+import {
+  afkortingIsGeldig,
+  normaliseerAfkorting,
+  toonAfkorting,
+  zelfdeAfkorting
+} from '../utils/docent-afkorting';
 
 @Component({
   selector: 'app-manage-students',
@@ -45,6 +51,33 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
       </header>
 
       <div class="flex-1 p-4 sm:p-8 space-y-6">
+        @if (mentorProblemen().length > 0) {
+          <div class="bg-amber-50 border border-amber-300 rounded-xl p-4 shadow-sm">
+            <div class="flex items-start justify-between gap-4">
+              <div class="flex items-start gap-3">
+                <div class="p-2 bg-amber-100 text-amber-800 rounded-lg shrink-0">
+                  <mat-icon class="text-xl">warning</mat-icon>
+                </div>
+                <div>
+                  <h3 class="text-sm font-bold text-amber-900">
+                    {{ mentorProblemen().length }} leerlingen vereisen een canonieke mentor (PR8-readiness)
+                  </h3>
+                  <p class="text-xs text-amber-800 mt-1 max-w-2xl leading-relaxed">
+                    Voor PR8-readiness moet elke leerling met een bestaande mentorrelatie expliciet gekoppeld zijn aan een canonieke docent uit de personeelsadministratie. Koppelen op basis van naam of e-mail is niet toegestaan.
+                  </p>
+                </div>
+              </div>
+              <button
+                (click)="toggleAlleenHerstel()"
+                class="px-3 py-1.5 text-xs font-bold rounded-lg border transition-colors shrink-0 flex items-center gap-1.5 cursor-pointer"
+                [class]="alleenMentorProblemen() ? 'bg-amber-600 text-white border-amber-700' : 'bg-white text-amber-800 border-amber-300 hover:bg-amber-100'">
+                <mat-icon class="text-[16px]">filter_list</mat-icon>
+                {{ alleenMentorProblemen() ? 'Toon alle leerlingen' : 'Filter op te herstellen' }}
+              </button>
+            </div>
+          </div>
+        }
+
         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center">
           <div class="relative flex-1 min-w-[250px]">
             <mat-icon class="absolute left-3 top-2.5 text-slate-400">search</mat-icon>
@@ -83,7 +116,32 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-slate-500">{{l.leerlingnummer}}</td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-800">{{l.leerling}}</td>
                   <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{{l.klas}}</td>
-                  <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{{l.mentorNaam}}</td>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm">
+                    @let ms = getMentorStatus(l);
+                    @if (ms.soort === 'inOrde') {
+                      <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                          {{ toon(ms.afkorting || '') }}
+                        </span>
+                        <span class="text-slate-700 text-xs font-medium">{{ l.mentorNaam || ms.docent?.naam }}</span>
+                      </div>
+                    } @else if (ms.soort === 'geen') {
+                      <span class="text-slate-400 italic text-xs">Geen mentor</span>
+                    } @else {
+                      <div class="flex items-center gap-2">
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                          <mat-icon class="text-[13px] w-[13px] h-[13px]">warning</mat-icon>
+                          {{ ms.soort === 'ontbreekt' ? 'Koppeling vereist' : 'Onbekend (' + ms.afkorting + ')' }}
+                        </span>
+                        <button
+                          (click)="openRepairMentor(l)"
+                          class="px-2 py-0.5 text-xs font-bold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded transition-colors cursor-pointer"
+                          title="Koppel canonieke mentor">
+                          Koppel
+                        </button>
+                      </div>
+                    }
+                  </td>
                   <td class="px-6 py-4 whitespace-nowrap">
                     @if (l.actief) {
                       <span class="px-2.5 py-1 inline-flex text-[10px] uppercase font-bold rounded-full bg-emerald-100 text-emerald-800 border-0">Actief</span>
@@ -92,14 +150,14 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
                     }
                   </td>
                   <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button (click)="toggleActive(l)" class="text-slate-400 hover:text-slate-600 transition-colors mx-2" title="{{l.actief ? 'Deactiveer' : 'Activeer'}}">
+                    <button (click)="toggleActive(l)" class="text-slate-400 hover:text-slate-600 transition-colors mx-2 cursor-pointer" title="{{l.actief ? 'Deactiveer' : 'Activeer'}}">
                       <mat-icon class="text-[20px] w-[20px] h-[20px]">{{l.actief ? 'block' : 'check_circle'}}</mat-icon>
                     </button>
-                    <button (click)="edit(l)" class="text-blue-600 hover:text-blue-800 transition-colors ml-2 mr-2" title="Bewerk">
+                    <button (click)="edit(l)" class="text-blue-600 hover:text-blue-800 transition-colors ml-2 mr-2 cursor-pointer" title="Bewerk">
                       <mat-icon class="text-[20px] w-[20px] h-[20px]">edit</mat-icon>
                     </button>
                     @if (magVerwijderen()) {
-                      <button (click)="deleteItem(l)" class="text-red-500 hover:text-red-700 transition-colors ml-1" title="Verwijder">
+                      <button (click)="deleteItem(l)" class="text-red-500 hover:text-red-700 transition-colors ml-1 cursor-pointer" title="Verwijder">
                         <mat-icon class="text-[20px] w-[20px] h-[20px]">delete</mat-icon>
                       </button>
                     }
@@ -133,13 +191,77 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
         </p>
       </div>
 
+      <!-- Snelle Reparatie Modal voor Mentor-koppeling -->
+      @if (repairingStudent(); as st) {
+        <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wide">Mentor koppelen</h3>
+              <button (click)="closeRepairMentor()" class="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">
+                <mat-icon class="text-[20px] w-[20px] h-[20px]">close</mat-icon>
+              </button>
+            </div>
+            <div class="p-6 space-y-4 text-sm">
+              <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1 text-xs">
+                <div><span class="text-slate-500">Leerling:</span> <strong class="text-slate-800">{{ st.leerling }}</strong> ({{ st.leerlingnummer }}, klas {{ st.klas }})</div>
+                @if (st.mentorNaam) {
+                  <div><span class="text-slate-500">Huidige weergavenaam:</span> <span class="text-slate-800 font-medium">{{ st.mentorNaam }}</span></div>
+                }
+                @if (st.mentorEmail) {
+                  <div><span class="text-slate-500">Huidig e-mailadres:</span> <span class="text-slate-800">{{ st.mentorEmail }}</span></div>
+                }
+                @if (st.mentorAfkorting) {
+                  <div><span class="text-slate-500">Huidige afkorting:</span> <span class="text-red-600 font-mono font-bold">{{ st.mentorAfkorting }} (onbekend)</span></div>
+                }
+              </div>
+
+              <div>
+                <label for="repair-mentor-select" class="block text-xs font-bold text-slate-700 mb-1">
+                  Kies canonieke docent als mentor *
+                </label>
+                <select
+                  id="repair-mentor-select"
+                  [value]="selectedRepairMentorAfkorting()"
+                  (change)="onRepairMentorChange($event)"
+                  class="w-full p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm">
+                  <option value="">-- Selecteer een actieve docent --</option>
+                  @for (d of actieveDocenten(); track d.afkorting) {
+                    <option [value]="d.afkorting">{{ toon(d.afkorting) }} - {{ d.naam }}</option>
+                  }
+                </select>
+                <p class="text-[11px] text-slate-500 mt-1.5">
+                  Let op: kies bewust de juiste docent. Er wordt nooit automatisch gekoppeld op basis van naam of e-mail.
+                </p>
+              </div>
+
+              <div class="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  (click)="closeRepairMentor()"
+                  class="px-4 py-2 text-sm font-medium bg-white border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer">
+                  Annuleren
+                </button>
+                <button
+                  type="button"
+                  (click)="saveRepairMentor()"
+                  [disabled]="!selectedRepairMentorAfkorting()"
+                  class="px-4 py-2 text-sm font-bold bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:opacity-50 transition-colors shadow-sm flex items-center gap-2 cursor-pointer">
+                  <mat-icon class="text-[18px]">check</mat-icon>
+                  Opslaan & Koppelen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+
       <!-- Formulier Modal -->
       @if (showForm()) {
         <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 transition-opacity">
           <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
             <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
               <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wide">{{editingId() ? 'Wijzig' : 'Nieuwe'}} Leerling</h3>
-              <button (click)="closeForm()" class="text-slate-400 hover:text-slate-600 transition-colors">
+              <button (click)="closeForm()" class="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">
                 <mat-icon class="text-[20px] w-[20px] h-[20px]">close</mat-icon>
               </button>
             </div>
@@ -163,13 +285,30 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
                 <input type="text" formControlName="leerling" class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
               </div>
 
+              <div>
+                <label for="form-mentor-select" class="block text-xs font-semibold text-slate-600 mb-1">Mentor (canonieke docent)</label>
+                <select
+                  id="form-mentor-select"
+                  formControlName="mentorAfkorting"
+                  (change)="onFormMentorSelectChange($event)"
+                  class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                  <option value="">-- Geen mentor / Mentor ontkoppelen --</option>
+                  @for (d of actieveDocenten(); track d.afkorting) {
+                    <option [value]="d.afkorting">{{ toon(d.afkorting) }} - {{ d.naam }}</option>
+                  }
+                </select>
+                <p class="text-[11px] text-slate-500 mt-1">
+                  Koppelen op basis van naam of e-mail is niet toegestaan. Selecteer een docent uit de lijst.
+                </p>
+              </div>
+
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Mentor Naam *</label>
-                  <input type="text" formControlName="mentorNaam" class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Mentor Weergavenaam</label>
+                  <input type="text" formControlName="mentorNaam" [readonly]="true" class="w-full p-2 text-sm border border-slate-200 bg-slate-50 text-slate-600 rounded outline-none cursor-not-allowed">
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Mentor Email *</label>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Mentor Email</label>
                   <input type="email" formControlName="mentorEmail" class="w-full p-2 text-sm border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
               </div>
@@ -182,8 +321,8 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
               </div>
 
               <div class="pt-4 border-t border-slate-100 mt-2 flex justify-end gap-3">
-                <button type="button" (click)="closeForm()" class="px-4 py-2 text-sm font-medium bg-white border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">Annuleren</button>
-                <button type="submit" class="px-4 py-2 text-sm font-medium bg-blue-700 text-white rounded-md hover:bg-blue-800 disabled:opacity-50 transition-colors shadow-sm">Opslaan</button>
+                <button type="button" (click)="closeForm()" class="px-4 py-2 text-sm font-medium bg-white border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer">Annuleren</button>
+                <button type="submit" class="px-4 py-2 text-sm font-medium bg-blue-700 text-white rounded-md hover:bg-blue-800 disabled:opacity-50 transition-colors shadow-sm cursor-pointer">Opslaan</button>
               </div>
             </form>
           </div>
@@ -195,6 +334,13 @@ import { normaliseerKoppen, rijNaarObject, leesLeerlingRij } from '../utils/leer
 export class ManageStudentsComponent {
   private dataService = inject(DataService);
   private authService = inject(AuthService);
+
+  docenten = this.dataService.docenten;
+  actieveDocenten = computed(() =>
+    this.docenten()
+      .filter(d => d.actief)
+      .sort((a, b) => a.afkorting.localeCompare(b.afkorting))
+  );
 
   /**
    * Een mentor mag leerlingen toevoegen en bijwerken — dat is wat het koppelen
@@ -210,15 +356,73 @@ export class ManageStudentsComponent {
   bezig = signal(false);
   editingId = signal<string | null>(null);
 
+  alleenMentorProblemen = signal(false);
+  repairingStudent = signal<Leerling | null>(null);
+  selectedRepairMentorAfkorting = signal<string>('');
+
   form = this.fb.group({
     leerlingnummer: ['', Validators.required],
     leerling: ['', Validators.required],
     klas: ['', Validators.required],
-    mentorNaam: ['', Validators.required],
-    mentorEmail: ['', [Validators.required, Validators.email]],
+    mentorAfkorting: [''],
+    mentorNaam: [''],
+    mentorEmail: ['', Validators.email],
     schooljaar: ['2026-2027'],
     actief: [true]
   });
+
+  toon(afkorting: string): string {
+    return toonAfkorting(afkorting);
+  }
+
+  getMentorStatus(l: Leerling): {
+    soort: 'inOrde' | 'ontbreekt' | 'onbekend' | 'geen';
+    afkorting?: string;
+    docent?: Docent;
+  } {
+    const heeftRelatie = Boolean(
+      (l.mentorNaam && l.mentorNaam.trim()) ||
+      (l.mentorEmail && l.mentorEmail.trim()) ||
+      (l.mentorAfkorting && l.mentorAfkorting.trim())
+    );
+
+    if (!heeftRelatie) {
+      return { soort: 'geen' };
+    }
+
+    const rawAfk = l.mentorAfkorting?.trim();
+    if (!rawAfk) {
+      return { soort: 'ontbreekt' };
+    }
+
+    const norm = normaliseerAfkorting(rawAfk);
+    const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+    if (!docent) {
+      return { soort: 'onbekend', afkorting: norm };
+    }
+
+    return { soort: 'inOrde', afkorting: norm, docent };
+  }
+
+  mentorProblemen = computed(() => {
+    const bekende = new Set(this.docenten().map(d => normaliseerAfkorting(d.afkorting)).filter(Boolean));
+    return this.dataService.leerlingen()
+      .filter(l => l.schooljaar === '2026-2027')
+      .filter(l => {
+        const heeftRelatie = Boolean(
+          (l.mentorNaam && l.mentorNaam.trim()) ||
+          (l.mentorEmail && l.mentorEmail.trim()) ||
+          (l.mentorAfkorting && l.mentorAfkorting.trim())
+        );
+        if (!heeftRelatie) return false;
+        const norm = l.mentorAfkorting ? normaliseerAfkorting(l.mentorAfkorting) : '';
+        return !norm || !bekende.has(norm);
+      });
+  });
+
+  toggleAlleenHerstel() {
+    this.alleenMentorProblemen.update(v => !v);
+  }
 
   availableKlassen = computed(() => {
     const lln = this.dataService.leerlingen().filter(l => l.schooljaar === '2026-2027');
@@ -229,6 +433,11 @@ export class ManageStudentsComponent {
   filteredLeerlingen = computed(() => {
     let result = this.dataService.leerlingen().filter(l => l.schooljaar === '2026-2027');
 
+    if (this.alleenMentorProblemen()) {
+      const probleemIds = new Set(this.mentorProblemen().map(l => l.id || l.leerlingnummer));
+      result = result.filter(l => probleemIds.has(l.id || l.leerlingnummer));
+    }
+
     if (this.filterKlas()) {
       result = result.filter(l => l.klas === this.filterKlas());
     }
@@ -238,7 +447,8 @@ export class ManageStudentsComponent {
       result = result.filter(l =>
         l.leerling.toLowerCase().includes(q) ||
         l.leerlingnummer.toLowerCase().includes(q) ||
-        (l.mentorNaam || '').toLowerCase().includes(q)
+        (l.mentorNaam || '').toLowerCase().includes(q) ||
+        (l.mentorAfkorting || '').toLowerCase().includes(q)
       );
     }
 
@@ -261,9 +471,77 @@ export class ManageStudentsComponent {
   );
 
   openForm() {
-    this.form.reset({ schooljaar: '2026-2027', actief: true });
+    this.form.reset({ schooljaar: '2026-2027', actief: true, mentorAfkorting: '', mentorNaam: '', mentorEmail: '' });
     this.editingId.set(null);
     this.showForm.set(true);
+  }
+
+  onFormMentorSelectChange(event: Event) {
+    const rawAfk = (event.target as HTMLSelectElement).value;
+    if (!rawAfk) {
+      this.form.patchValue({ mentorAfkorting: '', mentorNaam: '' });
+      return;
+    }
+    const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, rawAfk));
+    if (docent) {
+      this.form.patchValue({
+        mentorAfkorting: normaliseerAfkorting(docent.afkorting),
+        mentorNaam: docent.naam,
+      });
+    }
+  }
+
+  openRepairMentor(l: Leerling) {
+    this.repairingStudent.set(l);
+    const bestaand = l.mentorAfkorting && afkortingIsGeldig(l.mentorAfkorting)
+      ? normaliseerAfkorting(l.mentorAfkorting)
+      : '';
+    this.selectedRepairMentorAfkorting.set(bestaand);
+  }
+
+  closeRepairMentor() {
+    this.repairingStudent.set(null);
+    this.selectedRepairMentorAfkorting.set('');
+  }
+
+  onRepairMentorChange(event: Event) {
+    this.selectedRepairMentorAfkorting.set((event.target as HTMLSelectElement).value);
+  }
+
+  async saveRepairMentor() {
+    const student = this.repairingStudent();
+    if (!student || !student.id) return;
+
+    const rawAfk = this.selectedRepairMentorAfkorting().trim();
+    if (!rawAfk || !afkortingIsGeldig(rawAfk)) {
+      alert('Kies een geldige docentafkorting.');
+      return;
+    }
+
+    const norm = normaliseerAfkorting(rawAfk);
+    const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+    if (!docent) {
+      alert(`Docent met afkorting "${norm}" niet gevonden in het docentenbestand. Onbekende afkorting geweigerd.`);
+      return;
+    }
+
+    if (!docent.actief) {
+      alert(`Docent "${docent.naam}" (${toonAfkorting(norm)}) is inactief.`);
+      return;
+    }
+
+    this.bezig.set(true);
+    try {
+      await this.dataService.updateLeerling(student.id, {
+        mentorAfkorting: norm,
+        mentorNaam: docent.naam,
+      });
+      this.closeRepairMentor();
+    } catch {
+      alert('Er ging iets mis bij het opslaan van de mentorkoppeling.');
+    } finally {
+      this.bezig.set(false);
+    }
   }
 
   importCSV(event: Event) {
@@ -290,6 +568,7 @@ export class ManageStudentsComponent {
       let overgeslagen = 0;
       let zonderMentor = 0;
       let zonderMentorEmail = 0;
+      const afgewezenOnbekendeAfkorting: string[] = [];
 
       // Binnen één bestand kan hetzelfde leerlingnummer twee keer voorkomen.
       const inDitBestand = new Set<string>();
@@ -297,22 +576,45 @@ export class ManageStudentsComponent {
       for (let i = 1; i < rows.length; i++) {
         // De kolomherkenning staat in leerling-import.ts, met tests tegen een
         // echte Magister-export.
-        const { leerlingnummer, leerling, klas, mentorNaam, mentorEmail, actief } =
+        const { leerlingnummer, leerling, klas, mentorNaam, mentorEmail, mentorAfkorting, actief } =
           leesLeerlingRij(rijNaarObject(headers, rows[i]));
 
         if (!leerlingnummer || !leerling) { overgeslagen++; continue; }
         if (inDitBestand.has(leerlingnummer)) { overgeslagen++; continue; }
         inDitBestand.add(leerlingnummer);
 
-        if (!mentorNaam) zonderMentor++;
-        if (!mentorEmail) zonderMentorEmail++;
-
-        // Ontdubbelen: één leerling per leerlingnummer per schooljaar. Zonder deze
-        // controle verdubbelde de hele lijst zodra iemand hetzelfde bestand opnieuw
-        // importeerde na een correctie.
+        // Ontdubbelen: één leerling per leerlingnummer per schooljaar.
         const bestaand = this.dataService.leerlingen().find(l =>
           l.leerlingnummer === leerlingnummer && l.schooljaar === schooljaar
         );
+
+        let finaleMentorAfkorting: string | undefined = undefined;
+        let finaleMentorNaam = mentorNaam;
+
+        if (mentorAfkorting) {
+          // Als de CSV expliciet een mentorAfkorting meegeeft, verifiëren we die
+          const norm = normaliseerAfkorting(mentorAfkorting);
+          const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+          if (!docent) {
+            afgewezenOnbekendeAfkorting.push(`Rij ${i + 1} (${leerling}): onbekende mentorAfkorting "${mentorAfkorting}"`);
+            overgeslagen++;
+            continue;
+          }
+          if (!docent.actief) {
+            afgewezenOnbekendeAfkorting.push(`Rij ${i + 1} (${leerling}): mentor "${docent.naam}" (${toonAfkorting(norm)}) is inactief`);
+            overgeslagen++;
+            continue;
+          }
+          finaleMentorAfkorting = norm;
+          finaleMentorNaam = docent.naam;
+        } else if (bestaand?.mentorAfkorting) {
+          // Behoud eerder gekoppelde canonieke mentorafkorting
+          finaleMentorAfkorting = bestaand.mentorAfkorting;
+          finaleMentorNaam = bestaand.mentorNaam || mentorNaam;
+        }
+
+        if (!finaleMentorNaam && !finaleMentorAfkorting) zonderMentor++;
+        if (!mentorEmail) zonderMentorEmail++;
 
         teSchrijven.push({
           id: bestaand?.id,
@@ -320,8 +622,9 @@ export class ManageStudentsComponent {
             leerlingnummer: leerlingnummer,
             leerling: leerling,
             klas: klas,
-            mentorNaam: mentorNaam,
+            mentorNaam: finaleMentorNaam,
             mentorEmail: mentorEmail,
+            ...(finaleMentorAfkorting ? { mentorAfkorting: finaleMentorAfkorting } : {}),
             schooljaar: schooljaar,
             actief: actief
           }
@@ -329,7 +632,11 @@ export class ManageStudentsComponent {
       }
 
       if (teSchrijven.length === 0) {
-        alert('Geen bruikbare regels gevonden. Er is per regel minimaal een leerlingnummer en een naam nodig.');
+        alert(
+          afgewezenOnbekendeAfkorting.length > 0
+            ? `Geen bruikbare regels geïmporteerd. Geweigerde afkortingen:\n${afgewezenOnbekendeAfkorting.join('\n')}`
+            : 'Geen bruikbare regels gevonden. Er is per regel minimaal een leerlingnummer en een naam nodig.'
+        );
         input.value = '';
         return;
       }
@@ -345,11 +652,14 @@ export class ManageStudentsComponent {
         if (overgeslagen) delen.push(`${overgeslagen} overgeslagen`);
 
         let melding = 'Import klaar: ' + delen.join(', ') + '.';
+        if (afgewezenOnbekendeAfkorting.length > 0) {
+          melding += `\n\nLet op: ${afgewezenOnbekendeAfkorting.length} regels geweigerd wegens onbekende/inactieve mentorafkorting (eerste: ${afgewezenOnbekendeAfkorting[0]}).`;
+        }
         if (zonderMentor) {
           melding += `\n\nBij ${zonderMentor} leerlingen stond geen mentor in het bestand.`;
         }
         if (zonderMentorEmail === teSchrijven.length) {
-          melding += '\n\nHet bestand bevat geen e-mailadressen van mentoren. Die velden zijn leeg gelaten; vul ze aan als je mentoren aan hun eigen klas wilt koppelen.';
+          melding += '\n\nHet bestand bevat geen e-mailadressen van mentoren.';
         }
         alert(melding);
       } catch {
@@ -365,8 +675,8 @@ export class ManageStudentsComponent {
 
   downloadTemplate() {
     downloadCsv('leerlingen_template.csv', [
-      ['leerlingnummer', 'leerling', 'klas', 'mentorNaam', 'mentorEmail', 'schooljaar', 'actief'],
-      ['114334', 'Dae Aartsen', '2HJ', 'Rumeysa Karaarslan', 'rkaraarslan@emmauscollege.nl', '2026-2027', 'true']
+      ['leerlingnummer', 'leerling', 'klas', 'mentorAfkorting', 'mentorNaam', 'mentorEmail', 'schooljaar', 'actief'],
+      ['114334', 'Dae Aartsen', '2HJ', 'kar', 'Rumeysa Karaarslan', 'rkaraarslan@emmauscollege.nl', '2026-2027', 'true']
     ], ',');
   }
 
@@ -375,7 +685,16 @@ export class ManageStudentsComponent {
   }
 
   edit(item: any) {
-    this.form.patchValue(item);
+    this.form.patchValue({
+      leerlingnummer: item.leerlingnummer,
+      leerling: item.leerling,
+      klas: item.klas,
+      mentorAfkorting: item.mentorAfkorting ? normaliseerAfkorting(item.mentorAfkorting) : '',
+      mentorNaam: item.mentorNaam || '',
+      mentorEmail: item.mentorEmail || '',
+      schooljaar: item.schooljaar || '2026-2027',
+      actief: item.actief !== false,
+    });
     this.editingId.set(item.id);
     this.showForm.set(true);
   }
@@ -432,9 +751,32 @@ export class ManageStudentsComponent {
       return;
     }
     
-    const val = this.form.value as any;
+    const val = { ...this.form.value } as any;
+    const rawAfk = (val.mentorAfkorting || '').trim();
+
+    if (rawAfk) {
+      if (!afkortingIsGeldig(rawAfk)) {
+        alert('De gekozen docentafkorting is ongeldig.');
+        return;
+      }
+      const norm = normaliseerAfkorting(rawAfk);
+      const docent = this.docenten().find(d => zelfdeAfkorting(d.afkorting, norm));
+      if (!docent) {
+        alert(`Docent met afkorting "${norm}" niet gevonden in het docentenbestand. Onbekende afkorting geweigerd.`);
+        return;
+      }
+      if (!docent.actief) {
+        alert(`Docent "${docent.naam}" (${toonAfkorting(norm)}) is inactief.`);
+        return;
+      }
+      val.mentorAfkorting = norm;
+      val.mentorNaam = docent.naam;
+    } else {
+      val.mentorAfkorting = '';
+      val.mentorNaam = '';
+    }
+
     const id = this.editingId();
-    
     if (id) {
       this.dataService.updateLeerling(id, val);
     } else {
@@ -444,3 +786,4 @@ export class ManageStudentsComponent {
     this.closeForm();
   }
 }
+
